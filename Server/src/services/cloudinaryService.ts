@@ -1,0 +1,112 @@
+import { UploadApiOptions, v2 as cloudinary } from 'cloudinary';
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+export async function uploadToCloudinary(
+  buffer: Buffer,
+  folder: string,
+  publicId: string
+): Promise<string> {
+  try {
+    const result = await uploadBuffer(buffer, {
+      folder,
+      public_id: publicId,
+      overwrite: true,
+      resource_type: 'image',
+      transformation: [
+        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+        { quality: 'auto', fetch_format: 'auto' },
+      ],
+    });
+
+    return result.secure_url;
+  } catch (err: any) {
+    const msg: string =
+      err?.message        ||
+      err?.error?.message ||
+      err?.http_code      ||
+      (typeof err === 'string' ? err : JSON.stringify(err)) ||
+      'Cloudinary upload failed';
+
+    throw new Error(`Cloudinary: ${msg}`);
+  }
+}
+
+export async function uploadRawToCloudinary(
+  buffer: Buffer,
+  folder: string,
+  publicId: string,
+  originalFilename?: string
+): Promise<{
+  secureUrl: string;
+  publicId: string;
+  resourceType: string;
+  bytes: number;
+  format?: string;
+  originalFilename?: string;
+}> {
+  try {
+    const result = await uploadBuffer(buffer, {
+      folder,
+      public_id: publicId,
+      overwrite: true,
+      resource_type: 'raw',
+      use_filename: true,
+      unique_filename: false,
+      filename_override: originalFilename,
+    });
+
+    return {
+      secureUrl: result.secure_url,
+      publicId: result.public_id,
+      resourceType: result.resource_type,
+      bytes: result.bytes,
+      format: result.format,
+      originalFilename: result.original_filename,
+    };
+  } catch (err: any) {
+    const msg: string =
+      err?.message ||
+      err?.error?.message ||
+      err?.http_code ||
+      (typeof err === 'string' ? err : JSON.stringify(err)) ||
+      'Cloudinary raw upload failed';
+
+    throw new Error(`Cloudinary: ${msg}`);
+  }
+}
+
+export async function deleteFromCloudinary(publicId: string): Promise<void> {
+  await destroyCloudinaryAsset(publicId, 'image');
+}
+
+export async function deleteRawFromCloudinary(publicId: string): Promise<void> {
+  await destroyCloudinaryAsset(publicId, 'raw');
+}
+
+async function uploadBuffer(buffer: Buffer, options: UploadApiOptions): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error || !result) {
+        reject(error || new Error('Cloudinary upload failed'));
+        return;
+      }
+
+      resolve(result);
+    });
+
+    stream.end(buffer);
+  });
+}
+
+async function destroyCloudinaryAsset(publicId: string, resourceType: 'image' | 'raw'): Promise<void> {
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+  } catch (err: any) {
+    console.error('Cloudinary delete error:', err?.message || err);
+  }
+}

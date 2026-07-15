@@ -57,9 +57,8 @@ const AdminApp = {
     formData.append('auth_token', btoa(auth.email + ':' + password));
 
     try {
-      const resp = await fetch('../upload-image.php', {
+      const resp = await fetch('/api/upload-image', {
         method: 'POST',
-        headers: { 'X-Auth-Token': btoa(auth.email + ':' + password) },
         body: formData
       });
       const result = await resp.json();
@@ -96,6 +95,20 @@ const AdminApp = {
   DB_API_BASE: '/api/admin',
   SITE_DATA_API: '/api/site-data',
   dbAvailable: false,
+  data: {
+    settings: {},
+    stats: {},
+    services: [],
+    packages: [],
+    projects: [],
+    blog: [],
+    quotes: [],
+    messages: [],
+    testimonials: [],
+    team: [],
+    faq: [],
+    activity: []
+  },
 
   currentSection: 'dashboard',
   editingId: null,
@@ -119,7 +132,8 @@ const AdminApp = {
       return;
     }
 
-    this.seedDefaultData();
+    await this.loadAdminData();
+    await this.seedDefaultData();
     this.setupNavigation();
     this.setupSidebar();
     this.setupLogout();
@@ -182,7 +196,11 @@ const AdminApp = {
   },
 
   // ---------- SEED DEFAULT DATA ----------
-  seedDefaultData() {
+  async seedDefaultData() {
+    if (this.dbAvailable) {
+      return;
+    }
+
     if (!localStorage.getItem(this.DB_KEYS.services)) {
       this.save('services', [
         { id: 1, title: 'Solar Panel Sales & Installation', slug: 'solar-installation', category: 'Solar Energy', description: 'Professional solar system design, installation, and commissioning.', status: 'published', order: 1 },
@@ -256,7 +274,34 @@ const AdminApp = {
   },
 
   // ---------- STORAGE HELPERS ----------
-  load(key) {
+  async loadAdminData() {
+    try {
+      const resp = await fetch(`${this.DB_API_BASE}/all`);
+      if (!resp.ok) throw new Error('Admin API unavailable');
+      const data = await resp.json();
+      this.dbAvailable = true;
+      this.data = {
+        settings: data.settings || {},
+        stats: data.stats || {},
+        services: data.services || [],
+        packages: data.packages || [],
+        projects: data.projects || [],
+        blog: data.blog || [],
+        quotes: data.quotes || [],
+        messages: data.messages || [],
+        testimonials: data.testimonials || [],
+        team: data.team || [],
+        faq: data.faq || [],
+        activity: data.activity || []
+      };
+    } catch (error) {
+      console.warn('Admin DB unavailable, using localStorage fallback.', error.message || error);
+      this.dbAvailable = false;
+      this.loadFromLocalStorage();
+    }
+  },
+
+  loadLocal(key) {
     try {
       const raw = localStorage.getItem(this.DB_KEYS[key]);
       if (!raw) return (key === 'stats' || key === 'settings') ? {} : [];
@@ -265,12 +310,92 @@ const AdminApp = {
       return (key === 'stats' || key === 'settings') ? {} : [];
     }
   },
-  save(key, data) {
-    localStorage.setItem(this.DB_KEYS[key], JSON.stringify(data));
+
+  load(key) {
+    if (this.dbAvailable) {
+      return this.data[key] || ((key === 'stats' || key === 'settings') ? {} : []);
+    }
+    return this.loadLocal(key);
   },
+
+  saveLocal(key, data) {
+    localStorage.setItem(this.DB_KEYS[key], JSON.stringify(data));
+    this.data[key] = data;
+  },
+
+  save(key, data) {
+    if (this.dbAvailable) {
+      this.data[key] = data;
+      this.syncKey(key, data);
+    } else {
+      this.saveLocal(key, data);
+    }
+  },
+
+  async syncKey(key, data) {
+    if (!this.dbAvailable) return;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (['services', 'packages', 'projects', 'blog', 'testimonials', 'team', 'faq'].includes(key)) {
+        await fetch(`${this.DB_API_BASE}/bulk`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ type: key, items: data })
+        });
+      } else if (key === 'settings') {
+        await fetch(`${this.DB_API_BASE}/settings`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(data)
+        });
+      } else if (key === 'stats') {
+        await fetch(`${this.DB_API_BASE}/stats`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(data)
+        });
+      }
+    } catch (error) {
+      console.warn(`Failed to sync ${key} to DB.`, error.message || error);
+    }
+  },
+
+  async updateItem(type, id, patch) {
+    if (!this.dbAvailable) return;
+    try {
+      await fetch(`${this.DB_API_BASE}/${type}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch)
+      });
+    } catch (error) {
+      console.warn(`Failed to update ${type}/${id}`, error.message || error);
+    }
+  },
+
+  async logActivity(action, icon = '📋') {
+    const entry = { text: action, icon, timestamp: Date.now() };
+    const activity = this.dbAvailable ? this.data.activity : this.load('activity');
+    activity.push(entry);
+    if (activity.length > 50) activity.splice(0, activity.length - 50);
+    this.saveLocal('activity', activity);
+
+    if (this.dbAvailable) {
+      try {
+        await fetch(`${this.DB_API_BASE}/activity`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, icon, user_email: JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}').email || null, metadata: null })
+        });
+      } catch (error) {
+        console.warn('Failed to write activity log to DB.', error.message || error);
+      }
+    }
+  },
+
   nextId(key) {
     const items = this.load(key);
-    return items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+    return items.length > 0 ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
   },
 
   // ---------- NAVIGATION ----------
@@ -898,24 +1023,34 @@ const AdminApp = {
     if (item) this.openModal(type, item);
   },
 
-  deleteItem(storeKey, id) {
+  async deleteItem(storeKey, id) {
     if (!confirm('Are you sure you want to delete this item?')) return;
     let items = this.load(storeKey);
     const item = items.find(i => i.id === id);
     items = items.filter(i => i.id !== id);
     this.save(storeKey, items);
+    if (this.dbAvailable) {
+      try {
+        await fetch(`${this.DB_API_BASE}/${storeKey}/${id}`, { method: 'DELETE' });
+      } catch (error) {
+        console.warn('Failed to delete item in DB.', error.message || error);
+      }
+    }
     this.logActivity(`Deleted item from ${storeKey}`, '🗑️');
     this.renderAll();
     this.renderDashboard();
     this.toast('Item deleted.', 'success');
   },
 
-  updateStatus(storeKey, id, newStatus) {
+  async updateStatus(storeKey, id, newStatus) {
     const items = this.load(storeKey);
     const item = items.find(i => i.id === id);
     if (item) {
       item.status = newStatus;
       this.save(storeKey, items);
+      if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
+        await this.updateItem(storeKey, id, { status: newStatus });
+      }
       this.logActivity(`Updated ${storeKey} status to "${newStatus}" for ${item.name || item.title || 'item'}`, '🔄');
       this.renderAll();
       this.renderDashboard();
@@ -980,12 +1115,15 @@ const AdminApp = {
     document.getElementById('detailOverlay').classList.remove('open');
   },
 
-  saveNotes(storeKey, id) {
+  async saveNotes(storeKey, id) {
     const items = this.load(storeKey);
     const item = items.find(i => i.id === id);
     if (item) {
       item.notes = document.getElementById('detail-notes')?.value || '';
       this.save(storeKey, items);
+      if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
+        await this.updateItem(storeKey, id, { notes: item.notes });
+      }
       this.toast('Notes saved!', 'success');
     }
   },
@@ -1082,12 +1220,24 @@ const AdminApp = {
   },
 
   // ---------- ACTIVITY LOG ----------
-  logActivity(text, icon = '📋') {
+  async logActivity(text, icon = '📋') {
+    const entry = { text, icon, timestamp: Date.now() };
     const activity = this.load('activity');
-    activity.push({ text, icon, timestamp: Date.now() });
-    // Keep last 50
+    activity.push(entry);
     if (activity.length > 50) activity.splice(0, activity.length - 50);
     this.save('activity', activity);
+
+    if (this.dbAvailable) {
+      try {
+        await fetch(`${this.DB_API_BASE}/activity`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: text, icon, user_email: JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}').email || null, metadata: null })
+        });
+      } catch (error) {
+        console.warn('Failed to write activity log to DB.', error.message || error);
+      }
+    }
   },
 
   timeAgo(timestamp) {
@@ -1101,15 +1251,15 @@ const AdminApp = {
   // ---------- GATHER SITE DATA ----------
   gatherSiteData() {
     return {
-      settings: this.loadSafe('settings'),
-      stats: this.loadSafe('stats'),
-      services: this.loadSafe('services'),
-      packages: this.loadSafe('packages'),
-      testimonials: this.loadSafe('testimonials'),
-      team: this.loadSafe('team'),
-      faq: this.loadSafe('faq'),
-      blog: this.loadSafe('blog'),
-      projects: this.loadSafe('projects'),
+      settings: this.getSourceData('settings'),
+      stats: this.getSourceData('stats'),
+      services: this.getSourceData('services'),
+      packages: this.getSourceData('packages'),
+      testimonials: this.getSourceData('testimonials'),
+      team: this.getSourceData('team'),
+      faq: this.getSourceData('faq'),
+      blog: this.getSourceData('blog'),
+      projects: this.getSourceData('projects'),
       published_at: new Date().toISOString()
     };
   },
@@ -1125,6 +1275,13 @@ const AdminApp = {
     }
   },
 
+  getSourceData(key) {
+    if (this.dbAvailable) {
+      return this.data[key] || (key === 'stats' || key === 'settings' ? {} : []);
+    }
+    return this.loadSafe(key);
+  },
+
   // ---------- PUBLISH TO LIVE SITE ----------
   async publishToLive() {
     const publishBtn = document.getElementById('publishBtn');
@@ -1133,20 +1290,12 @@ const AdminApp = {
       publishBtn.textContent = 'Publishing...';
     }
 
-    const siteData = this.gatherSiteData();
-
     try {
-      // Auth token from current session
-      const auth = JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}');
-      const password = localStorage.getItem(this.DB_KEYS.password) || 'admin123';
-      siteData.auth_token = btoa(auth.email + ':' + password);
-
-      const resp = await fetch('../save-data.php', {
+      const endpoint = '/api/site-data/publish';
+      const resp = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(siteData)
+        headers: { 'Content-Type': 'application/json' }
       });
-
       const result = await resp.json();
 
       if (resp.ok && result.success) {

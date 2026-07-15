@@ -12,40 +12,41 @@
       let jsonData = null;
       let localData = null;
 
-      // Try to load published data from server JSON file
+      // Try to load published data from DB-backed API first
       try {
-        const resp = await fetch('site-data.json?v=' + Date.now());
+        const resp = await fetch('/api/site-data?v=' + Date.now());
         if (resp.ok) {
-          const text = await resp.text();
-          // Only parse if it's actually JSON (not an HTML error page)
-          if (text.trim().startsWith('{')) {
-            jsonData = JSON.parse(text);
-          }
+          jsonData = await resp.json();
         }
       } catch (e) {
-        // No JSON file available or parse error
+        // API unavailable
       }
 
-      // Also load from localStorage (for admin previewing locally or as supplement)
+      if (!jsonData) {
+        try {
+          const resp = await fetch('site-data.json?v=' + Date.now());
+          if (resp.ok) {
+            const text = await resp.text();
+            if (text.trim().startsWith('{')) {
+              jsonData = JSON.parse(text);
+            }
+          }
+        } catch (e) {
+          // No JSON file available or parse error
+        }
+      }
+
       try {
         localData = this.loadFromLocalStorage();
       } catch (e) {
         // localStorage not available
       }
 
-      // Merge: localStorage overrides JSON for keys it has (localStorage is always more recent)
-      if (jsonData && localData) {
+      if (jsonData) {
+        // Prefer published JSON or DB-backed data for live site content.
         this.data = jsonData;
-        const keys = ['settings', 'stats', 'testimonials', 'team', 'faq', 'blog', 'packages', 'services', 'projects'];
-        keys.forEach(key => {
-          // localStorage wins — it has the latest admin edits
-          if (localData[key]) {
-            this.data[key] = localData[key];
-          }
-        });
       } else {
-        // Use whichever is available — prefer localStorage (latest edits)
-        this.data = localData || jsonData;
+        this.data = localData;
       }
 
       if (!this.data) return;

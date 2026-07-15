@@ -126,94 +126,43 @@ document.addEventListener('DOMContentLoaded', () => {
   const contactForm = document.getElementById('contactForm');
   const quoteForm = document.getElementById('quoteForm');
 
+  async function submitForm(endpoint, form, successId) {
+    const formData = new FormData(form);
+    const data = {};
+    formData.forEach((value, key) => { data[key] = value; });
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || 'Submission failed.');
+      }
+
+      showSuccess(form, successId);
+      form.reset();
+    } catch (error) {
+      console.error(error);
+      alert('Sorry, there was a problem submitting the form. Please try again later.');
+    }
+  }
+
   if (contactForm) {
     contactForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      saveToAdmin('messages', contactForm);
-      sendEmail('contact', contactForm);
-      showSuccess(contactForm, 'contactSuccess');
+      submitForm('/api/contact', contactForm, 'contactSuccess');
     });
   }
 
   if (quoteForm) {
     quoteForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      saveToAdmin('quotes', quoteForm);
-      sendEmail('quote', quoteForm);
-      showSuccess(quoteForm, 'quoteSuccess');
+      submitForm('/api/quote', quoteForm, 'quoteSuccess');
     });
-  }
-
-  function saveToAdmin(type, form) {
-    const formData = new FormData(form);
-    const data = {};
-    formData.forEach((value, key) => { data[key] = value; });
-
-    const storeKey = type === 'quotes' ? 'ank_quotes' : 'ank_messages';
-    const items = JSON.parse(localStorage.getItem(storeKey) || '[]');
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-
-    if (type === 'quotes') {
-      items.push({
-        id: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1,
-        date: dateStr,
-        name: data.name || '',
-        phone: data.phone || '',
-        email: data.email || '',
-        location: data.location || '',
-        service: data.service || '',
-        package: data.package || '',
-        description: data.description || '',
-        contactMethod: data.contact_method || 'Phone',
-        status: 'New',
-        notes: ''
-      });
-    } else {
-      items.push({
-        id: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1,
-        date: dateStr,
-        name: data.name || '',
-        email: data.email || '',
-        phone: data.phone || '',
-        service: data.service || '',
-        message: data.message || '',
-        status: 'Unread'
-      });
-    }
-
-    localStorage.setItem(storeKey, JSON.stringify(items));
-
-    // Also log activity
-    const activity = JSON.parse(localStorage.getItem('ank_activity') || '[]');
-    activity.push({
-      text: type === 'quotes' ? `New quote request from ${data.name}` : `New message from ${data.name}`,
-      icon: type === 'quotes' ? '📩' : '💬',
-      timestamp: Date.now()
-    });
-    localStorage.setItem('ank_activity', JSON.stringify(activity));
-
-    // Also open WhatsApp
-    let message = 'New inquiry from ANK Hydro website:\n\n';
-    for (const [key, value] of Object.entries(data)) {
-      if (value) {
-        message += `*${key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}:* ${value}\n`;
-      }
-    }
-    const waUrl = `https://wa.me/254758849293?text=${encodeURIComponent(message)}`;
-    window.open(waUrl, '_blank');
-  }
-
-  function sendEmail(type, form) {
-    const formData = new FormData(form);
-    const data = { type };
-    formData.forEach((value, key) => { data[key] = value; });
-
-    fetch('/send-email.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    }).catch(() => {});
   }
 
   function showSuccess(form, successId) {

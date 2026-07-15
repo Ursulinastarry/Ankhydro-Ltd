@@ -6,10 +6,10 @@ const cookieParser = require('cookie-parser');
 const fileUpload = require('express-fileupload');
 require('dotenv').config();
 
-const { initDb } = require('./src/utils/db');
-const publicRoutes = require('./src/routes/publicRoutes');
-const adminRoutes = require('./src/routes/adminRoutes');
-const mpesaRoutes = require('./src/routes/mpesaRoutes');
+const { initDb } = require('./utils/db');
+const publicRoutes = require('./routes/publicRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const mpesaRoutes = require('./routes/mpesaRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;

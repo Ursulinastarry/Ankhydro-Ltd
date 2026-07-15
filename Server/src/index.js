@@ -6,7 +6,7 @@ const cookieParser = require('cookie-parser');
 const fileUpload = require('express-fileupload');
 require('dotenv').config();
 
-const { initDb } = require('./utils/db');
+const { initDb } = require('./db');
 const publicRoutes = require('./routes/publicRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const mpesaRoutes = require('./routes/mpesaRoutes');

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { queryOne, queryRows } = require('../utils/db');
+const { queryOne, queryRows } = require('../db');
 const { sendEmail } = require('../services/emailService');
 
 function getSiteDataMap(row) {

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { pool } from "../index";
+import { pool } from "../db";
 
 export type NotificationType =
   | "ACCOUNT"
@@ -262,12 +262,14 @@ export async function createAndSendNotification(payload: NotifyPayload) {
       if (emailTo) {
         await sendNotificationEmail(emailTo, title, message, data);
       } else {
-        await Promise.all(admins.map((admin) => sendNotificationEmail(admin.email, title, message, data)));
+        await Promise.all(
+          admins.map((admin: { id: string; email: string }) =>
+            sendNotificationEmail(admin.email, title, message, data)
+          )
+        );
       }
-    }
-
-    return created;
   }
+}
 
   if (!userId) {
     throw new Error("Notification must include either userId or audience");
@@ -287,3 +289,4 @@ export async function createAndSendNotification(payload: NotifyPayload) {
 
   return rows[0];
 }
+  

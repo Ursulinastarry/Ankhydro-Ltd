@@ -1,6 +1,6 @@
 const express = require('express');
 const { mpesaService, MpesaError } = require('../services/mpesaService');
-const { pool, queryOne } = require('../utils/db');
+const { pool, queryOne } = require('../db');
 const { sendEmail } = require('../services/emailService');
 
 const router = express.Router();

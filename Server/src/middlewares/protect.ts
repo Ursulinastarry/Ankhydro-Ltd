@@ -1,7 +1,7 @@
 // src/middlewares/authMiddleware.ts
 import asyncHandler from "./asyncHandler";
 import jwt from "jsonwebtoken";
-import { pool } from "../index";
+import { pool } from "../db";
 import { UserRequest } from "../utils/types/userTypes";
 import { Response, NextFunction } from "express";
 

@@ -1,22 +1,15 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.mpesaService = exports.MpesaService = exports.MpesaError = void 0;
-const axios_1 = __importDefault(require("axios"));
-const luxon_1 = require("luxon");
+import axios from 'axios';
+import { DateTime } from 'luxon';
 // A structured error that carries the raw Safaricom response
 // so the controller can surface it directly to the client
-class MpesaError extends Error {
+export class MpesaError extends Error {
     constructor(message, safaricomResponse) {
         super(message);
         this.name = 'MpesaError';
         this.safaricomResponse = safaricomResponse;
     }
 }
-exports.MpesaError = MpesaError;
-class MpesaService {
+export class MpesaService {
     constructor(config) {
         this.config = config;
         this.baseUrl =
@@ -31,7 +24,7 @@ class MpesaService {
         }
         const auth = Buffer.from(`${this.config.consumerKey}:${this.config.consumerSecret}`).toString('base64');
         try {
-            const response = await axios_1.default.get(`${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` } });
+            const response = await axios.get(`${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` } });
             const token = response.data?.access_token;
             if (!token) {
                 throw new MpesaError('Access token missing in Safaricom response', response.data);
@@ -53,7 +46,7 @@ class MpesaService {
     }
     // ── Password ───────────────────────────────────────────────────────
     generatePassword() {
-        const timestamp = luxon_1.DateTime.now()
+        const timestamp = DateTime.now()
             .setZone('Africa/Nairobi')
             .toFormat('yyyyMMddHHmmss');
         const password = Buffer.from(`${this.config.shortcode}${this.config.passkey}${timestamp}`).toString('base64');
@@ -88,7 +81,7 @@ class MpesaService {
         };
         // console.log('[M-Pesa] STK push payload:', JSON.stringify(payload, null, 2));
         try {
-            const response = await axios_1.default.post(`${this.baseUrl}/mpesa/stkpush/v1/processrequest`, payload, {
+            const response = await axios.post(`${this.baseUrl}/mpesa/stkpush/v1/processrequest`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
@@ -120,7 +113,7 @@ class MpesaService {
             CheckoutRequestID: checkoutRequestId,
         };
         try {
-            const response = await axios_1.default.post(`${this.baseUrl}/mpesa/stkpushquery/v1/query`, payload, {
+            const response = await axios.post(`${this.baseUrl}/mpesa/stkpushquery/v1/query`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
@@ -138,9 +131,8 @@ class MpesaService {
         }
     }
 }
-exports.MpesaService = MpesaService;
 // ── Singleton ──────────────────────────────────────────────────────
-exports.mpesaService = new MpesaService({
+export const mpesaService = new MpesaService({
     consumerKey: process.env.MPESA_CONSUMER_KEY || '',
     consumerSecret: process.env.MPESA_CONSUMER_SECRET || '',
     shortcode: process.env.MPESA_SHORTCODE || '',

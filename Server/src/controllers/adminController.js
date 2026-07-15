@@ -1,4 +1,4 @@
-const { pool, queryOne, queryRows } = require('../utils/db');
+const { pool, queryOne, queryRows } = require('../db');
 
 function getAdminTable(type) {
   const map = {

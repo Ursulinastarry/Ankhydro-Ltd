@@ -1,5 +1,5 @@
 import {User} from '../utils/types/userTypes'
-import { pool } from "../index";
+import { pool } from "../db";
 import { UserRequest } from "../utils/types/userTypes";
 
 export const getAllUsersService = async (): Promise<User[]> => {

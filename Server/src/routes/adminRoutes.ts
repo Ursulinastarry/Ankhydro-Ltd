@@ -1,5 +1,5 @@
-const express = require('express');
-const adminController = require('../controllers/adminController');
+import express from 'express';
+import * as adminController from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -11,4 +11,4 @@ router.post('/activity', adminController.logActivity);
 router.patch('/:type/:id', adminController.patchItem);
 router.delete('/:type/:id', adminController.deleteItem);
 
-module.exports = router;
+export default router;

@@ -1,4 +1,4 @@
-import { sendZohoEmail } from "./notificationService";
+import { sendZohoEmail } from "./notificationService.js";
 export async function sendPasswordResetEmail(args) {
     const { email, firstName, resetUrl, expiresInMinutes } = args;
     const greeting = firstName?.trim() ? `Hi ${firstName.trim()},` : "Hi,";

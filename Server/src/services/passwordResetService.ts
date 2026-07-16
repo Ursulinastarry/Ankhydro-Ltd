@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { pool } from "../db";
+import { pool } from "../db.js";
 
 const RESET_TTL_MINUTES = 60;
 

@@ -1,7 +1,15 @@
-const { pool, queryOne, queryRows } = require('../db');
+import { Request, Response } from 'express';
+import { pool, queryOne, queryRows } from '../db.js';
 
-function getAdminTable(type) {
-  const map = {
+type AdminRow = Record<string, any>;
+
+type AdminPayload = {
+  type?: string;
+  items?: any[];
+};
+
+function getAdminTable(type?: string) {
+  const map: Record<string, string> = {
     services: 'services',
     packages: 'packages',
     projects: 'projects',
@@ -11,15 +19,15 @@ function getAdminTable(type) {
     faq: 'faq_items',
     quotes: 'quotes',
     messages: 'contacts',
-    activity: 'activity_log'
+    activity: 'activity_log',
   };
-  return map[type] || null;
+  return (type && map[type]) || null;
 }
 
-function formatBulkPayload(type, rows) {
+function formatBulkPayload(type: string, rows: any[]) {
   switch (type) {
     case 'services':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         title: r.title,
         slug: r.slug,
@@ -27,10 +35,10 @@ function formatBulkPayload(type, rows) {
         description: r.description,
         status: r.status,
         display_order: r.order || r.display_order || 0,
-        image: r.image || null
+        image: r.image || null,
       }));
     case 'packages':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         name: r.name,
         price: r.price || 0,
@@ -40,10 +48,10 @@ function formatBulkPayload(type, rows) {
         status: r.status,
         featured: r.featured || false,
         display_order: r.order || r.display_order || 0,
-        image: r.image || null
+        image: r.image || null,
       }));
     case 'projects':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         title: r.title,
         location: r.location,
@@ -55,10 +63,10 @@ function formatBulkPayload(type, rows) {
         image2: r.image2 || null,
         client: r.client || null,
         testimonial: r.testimonial || null,
-        display_order: r.order || r.display_order || 0
+        display_order: r.order || r.display_order || 0,
       }));
     case 'blog':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         title: r.title,
         slug: r.slug,
@@ -69,10 +77,10 @@ function formatBulkPayload(type, rows) {
         date: r.date || null,
         status: r.status,
         image: r.image || null,
-        tags: r.tags
+        tags: r.tags,
       }));
     case 'testimonials':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         client: r.client,
         location: r.location,
@@ -81,33 +89,33 @@ function formatBulkPayload(type, rows) {
         text: r.text,
         status: r.status,
         display_order: r.order || r.display_order || 0,
-        image: r.image || null
+        image: r.image || null,
       }));
     case 'team':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         name: r.name,
         role: r.role,
         bio: r.bio,
         status: r.status,
         display_order: r.order || r.display_order || 0,
-        image: r.image || null
+        image: r.image || null,
       }));
     case 'faq':
-      return rows.map(r => ({
+      return rows.map((r) => ({
         id: r.id,
         question: r.question,
         answer: r.answer,
         category: r.category,
         status: r.status,
-        display_order: r.order || r.display_order || 0
+        display_order: r.order || r.display_order || 0,
       }));
     default:
       return rows;
   }
 }
 
-async function getAdminAll(req, res) {
+export async function getAdminAll(_req: Request, res: Response) {
   try {
     const [settingsRow, statsRow, services, packages, testimonials, team, faq, projects, blog, quotes, messages, activity] = await Promise.all([
       queryOne('SELECT * FROM site_settings ORDER BY updated_at DESC LIMIT 1'),
@@ -121,7 +129,7 @@ async function getAdminAll(req, res) {
       queryRows('SELECT * FROM blog_posts ORDER BY date DESC, id DESC'),
       queryRows('SELECT * FROM quotes ORDER BY created_at DESC'),
       queryRows('SELECT * FROM contacts ORDER BY created_at DESC'),
-      queryRows('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 50')
+      queryRows('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 50'),
     ]);
 
     res.json({
@@ -134,18 +142,18 @@ async function getAdminAll(req, res) {
       faq: formatBulkPayload('faq', faq),
       projects: formatBulkPayload('projects', projects),
       blog: formatBulkPayload('blog', blog),
-      quotes: quotes.map(q => ({ ...q, date: q.created_at })),
-      messages: messages.map(m => ({ ...m, date: m.created_at })),
-      activity: activity.map(a => ({ ...a, timestamp: new Date(a.created_at).getTime() }))
+      quotes: (quotes as any[]).map((q) => ({ ...q, date: q.created_at })),
+      messages: (messages as any[]).map((m) => ({ ...m, date: m.created_at })),
+      activity: (activity as any[]).map((a) => ({ ...a, timestamp: new Date(a.created_at).getTime() })),
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch admin content:', error.message || error);
     res.status(500).json({ error: 'Failed to load admin content.' });
   }
 }
 
-async function bulkSave(req, res) {
-  const { type, items } = req.body;
+export async function bulkSave(req: Request, res: Response) {
+  const { type, items } = req.body as AdminPayload;
   const table = getAdminTable(type);
 
   if (!table || !Array.isArray(items)) {
@@ -160,7 +168,7 @@ async function bulkSave(req, res) {
     await pool.query('BEGIN');
     await pool.query(`DELETE FROM ${table}`);
 
-    const insertPromises = items.map(item => {
+    const insertPromises = items.map((item) => {
       switch (type) {
         case 'services':
           return pool.query(
@@ -205,15 +213,15 @@ async function bulkSave(req, res) {
     await Promise.all(insertPromises);
     await pool.query('COMMIT');
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     await pool.query('ROLLBACK');
     console.error('Bulk save failed:', error.message || error);
     res.status(500).json({ error: 'Bulk save failed.' });
   }
 }
 
-async function saveSettings(req, res) {
-  const settings = req.body;
+export async function saveSettings(req: Request, res: Response) {
+  const settings = req.body as Record<string, any>;
 
   try {
     const existing = await queryOne('SELECT id FROM site_settings ORDER BY updated_at DESC LIMIT 1');
@@ -229,14 +237,14 @@ async function saveSettings(req, res) {
       );
     }
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Save settings failed:', error.message || error);
     res.status(500).json({ error: 'Failed to save settings.' });
   }
 }
 
-async function saveStats(req, res) {
-  const stats = req.body;
+export async function saveStats(req: Request, res: Response) {
+  const stats = req.body as Record<string, any>;
 
   try {
     const existing = await queryOne('SELECT id FROM site_stats ORDER BY updated_at DESC LIMIT 1');
@@ -252,14 +260,14 @@ async function saveStats(req, res) {
       );
     }
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Save stats failed:', error.message || error);
     res.status(500).json({ error: 'Failed to save stats.' });
   }
 }
 
-async function logActivity(req, res) {
-  const { action, icon, user_email, metadata } = req.body;
+export async function logActivity(req: Request, res: Response) {
+  const { action, icon, user_email, metadata } = req.body as Record<string, any>;
 
   try {
     await pool.query(
@@ -267,15 +275,17 @@ async function logActivity(req, res) {
       [action || null, icon || null, user_email || null, metadata || null]
     );
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Activity log failed:', error.message || error);
     res.status(500).json({ error: 'Failed to log activity.' });
   }
 }
 
-async function patchItem(req, res) {
-  const type = req.params.type;
-  const id = Number(req.params.id);
+export async function patchItem(req: Request<{ type: string; id: string }>, res: Response) {
+  const typeParam = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
+  const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const type = typeParam;
+  const id = Number(idParam);
   const table = getAdminTable(type);
 
   if (!table || Number.isNaN(id)) {
@@ -284,33 +294,35 @@ async function patchItem(req, res) {
 
   const allowedFields = {
     quotes: ['status', 'notes'],
-    messages: ['status', 'notes']
-  };
+    messages: ['status', 'notes'],
+  } as const;
 
-  if (!allowedFields[type]) {
+  if (!(type in allowedFields)) {
     return res.status(400).json({ error: 'Patch not supported for this content type.' });
   }
 
-  const updates = Object.keys(req.body).filter(key => allowedFields[type].includes(key));
+  const allowed = allowedFields[type as keyof typeof allowedFields];
+  const updates = Object.keys(req.body).filter((key): key is (typeof allowed)[number] => allowed.includes(key as any));
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No valid fields to update.' });
   }
 
-  const values = updates.map(key => req.body[key]);
+  const values = updates.map((key) => (req.body as Record<string, any>)[key]);
   const setClause = updates.map((key, idx) => `${key}=$${idx + 1}`).join(', ');
 
   try {
     await pool.query(`UPDATE ${table} SET ${setClause} WHERE id=$${updates.length + 1}`, [...values, id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Patch failed:', error.message || error);
     res.status(500).json({ error: 'Failed to update item.' });
   }
 }
 
-async function deleteItem(req, res) {
-  const type = req.params.type;
-  const id = Number(req.params.id);
+export async function deleteItem(req: Request<{ type: string; id: string }>, res: Response) {
+  const type = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
+  const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = Number(idParam);
   const table = getAdminTable(type);
 
   if (!table || Number.isNaN(id)) {
@@ -320,18 +332,8 @@ async function deleteItem(req, res) {
   try {
     await pool.query(`DELETE FROM ${table} WHERE id=$1`, [id]);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete failed:', error.message || error);
     res.status(500).json({ error: 'Failed to delete item.' });
   }
 }
-
-module.exports = {
-  getAdminAll,
-  bulkSave,
-  saveSettings,
-  saveStats,
-  logActivity,
-  patchItem,
-  deleteItem
-};

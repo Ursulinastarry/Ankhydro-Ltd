@@ -1,11 +1,13 @@
-const express = require('express');
-const { mpesaService, MpesaError } = require('../services/mpesaService');
-const { pool, queryOne } = require('../db');
-const { sendEmail } = require('../services/emailService');
+import express from 'express';
+import { mpesaService, MpesaError } from '../services/mpesaService.js';
+import { sendEmail } from '../services/emailService.js';
+import { pool, queryOne } from '../db.js';
 
 const router = express.Router();
 
-function normalizeMpesaPayload(body) {
+type MpesaPayload = Record<string, any>;
+
+function normalizeMpesaPayload(body: any): MpesaPayload {
   return body?.Body?.stkCallback || body?.stkCallback || body;
 }
 
@@ -18,14 +20,14 @@ router.post('/pay', async (req, res) => {
     customerName,
     customerEmail,
     service,
-    packageName
-  } = req.body;
+    packageName,
+  } = req.body as Record<string, any>;
 
   if (!phone || !amount || !accountReference) {
     return res.status(400).json({ error: 'phone, amount and accountReference are required.' });
   }
 
-  let orderResult = null;
+  let orderResult: any = null;
   try {
     orderResult = await pool.query(
       `INSERT INTO mpesa_orders (customer_name, customer_email, phone, service, package_name, amount, account_reference, transaction_desc, status)
@@ -38,7 +40,7 @@ router.post('/pay', async (req, res) => {
         packageName || null,
         Math.ceil(Number(amount) || 0),
         accountReference,
-        transactionDesc || null
+        transactionDesc || null,
       ]
     );
 
@@ -56,12 +58,14 @@ router.post('/pay', async (req, res) => {
     );
 
     res.json({ success: true, order: { id: order.id, status: order.status }, mpesa: mpesaResponse });
-  } catch (error) {
+  } catch (error: any) {
     const message = error.message || 'M-Pesa request failed';
     console.error('[M-Pesa] Pay failed:', error instanceof MpesaError ? error.safaricomResponse : message);
     if (orderResult?.rows?.[0]?.id) {
       const orderId = orderResult.rows[0].id;
-      const errorDesc = error instanceof MpesaError ? error.safaricomResponse?.ResponseDescription || error.safaricomResponse?.errorMessage || message : message;
+      const errorDesc = error instanceof MpesaError
+        ? error.safaricomResponse?.ResponseDescription || error.safaricomResponse?.errorMessage || message
+        : message;
       await pool.query(`UPDATE mpesa_orders SET status='failed', result_desc=$1 WHERE id=$2`, [errorDesc, orderId]).catch(() => {});
     }
     res.status(500).json({ error: message, safaricom: error instanceof MpesaError ? error.safaricomResponse : null });
@@ -79,8 +83,8 @@ router.post('/callback', async (req, res) => {
   const checkoutRequestId = payload.CheckoutRequestID || payload.checkoutRequestID || null;
   const merchantRequestId = payload.MerchantRequestID || payload.merchantRequestID || null;
   const items = payload.CallbackMetadata?.Item || [];
-  const receiptNumber = (items.find(item => item.Name === 'MpesaReceiptNumber') || {}).Value ||
-    (items.find(item => item.name === 'MpesaReceiptNumber') || {}).Value || null;
+  const receiptNumber = (items.find((item: any) => item.Name === 'MpesaReceiptNumber') || {}).Value ||
+    (items.find((item: any) => item.name === 'MpesaReceiptNumber') || {}).Value || null;
 
   try {
     const order = await queryOne(
@@ -111,15 +115,15 @@ router.post('/callback', async (req, res) => {
         amount: order.amount,
         currency: order.currency,
         receipt_number: receiptNumber,
-        result_desc: resultDesc
+        result_desc: resultDesc,
       });
     }
 
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[M-Pesa] Callback processing failed:', error.message || error);
     res.status(500).json({ error: 'Failed to process M-Pesa callback.' });
   }
 });
 
-module.exports = router;
+export default router;

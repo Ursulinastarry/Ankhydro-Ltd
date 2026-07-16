@@ -1,5 +1,5 @@
-const express = require('express');
-const publicController = require('../controllers/publicController');
+import express from 'express';
+import * as publicController from '../controllers/publicController.js';
 
 const router = express.Router();
 
@@ -10,4 +10,4 @@ router.get('/site-data', publicController.getSiteData);
 router.post('/site-data/publish', publicController.publishSiteData);
 router.post('/upload-image', publicController.uploadImage);
 
-module.exports = router;
+export default router;

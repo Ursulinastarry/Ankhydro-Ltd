@@ -1,5 +1,5 @@
 import axios from "axios";
-import { pool } from "../db";
+import { pool } from "../db.js";
 let cachedAccessToken;
 let tokenExpiry = 0;
 let cachedAccountId;

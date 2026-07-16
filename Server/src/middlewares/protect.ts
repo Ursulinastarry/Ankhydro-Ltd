@@ -1,8 +1,8 @@
 // src/middlewares/authMiddleware.ts
-import asyncHandler from "./asyncHandler";
+import asyncHandler from "./asyncHandler.js";
 import jwt from "jsonwebtoken";
-import { pool } from "../db";
-import { UserRequest } from "../utils/types/userTypes";
+import { pool } from "../db.js";
+import { UserRequest } from "../utils/types/userTypes.js";
 import { Response, NextFunction } from "express";
 
 export const protect = asyncHandler(async (req: UserRequest, res: Response, next: NextFunction) => {

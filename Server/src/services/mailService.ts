@@ -1,4 +1,4 @@
-import { sendZohoEmail } from "./notificationService";
+import { sendZohoEmail } from "./notificationService.js";
 
 type PasswordResetEmailArgs = {
   email: string;

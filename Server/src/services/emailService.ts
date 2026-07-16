@@ -1,6 +1,21 @@
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
-function escapeHtml(value) {
+type EmailPayload = Record<string, any>;
+
+type TransportConfig = {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth?: {
+    user: string;
+    pass: string;
+  };
+  tls: {
+    rejectUnauthorized: false;
+  };
+};
+
+function escapeHtml(value: unknown) {
   if (typeof value !== 'string') return '';
   return value
     .replace(/&/g, '&amp;')
@@ -10,7 +25,7 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
-function buildEmailHtml(type, payload) {
+function buildEmailHtml(type: string, payload: EmailPayload) {
   const rows = Object.entries(payload)
     .filter(([, value]) => value != null && value !== '')
     .map(([key, value]) => `
@@ -20,33 +35,43 @@ function buildEmailHtml(type, payload) {
       </tr>`)
     .join('');
 
+  const subjectLabel =
+    type === 'quote'
+      ? 'Quote Request'
+      : type === 'payment'
+      ? 'Payment Notification'
+      : 'Contact Message';
+
   return `
     <html>
       <body style="font-family:Arial,Helvetica,sans-serif;color:#111;">
         <div style="max-width:650px;margin:0 auto;padding:20px;">
-          <h2 style="color:#0a2540;">ANK Hydro ${escapeHtml(type === 'quote' ? 'Quote Request' : type === 'payment' ? 'Payment Notification' : 'Contact Message')}</h2>
+          <h2 style="color:#0a2540;">ANK Hydro ${escapeHtml(subjectLabel)}</h2>
           <table style="border-collapse:collapse;width:100%;">${rows}</table>
         </div>
       </body>
     </html>`;
 }
 
-async function sendEmail(type, payload) {
+export async function sendEmail(type: 'quote' | 'payment' | 'contact', payload: EmailPayload) {
   if (!process.env.SMTP_HOST || !process.env.EMAIL_TO) {
     return null;
   }
 
-  const transportConfig = {
+  const transportConfig: TransportConfig = {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || '587'),
     secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-    auth: process.env.SMTP_USER && process.env.SMTP_PASS ? {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    } : undefined,
+    auth:
+      process.env.SMTP_USER && process.env.SMTP_PASS
+        ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          }
+        : undefined,
     tls: {
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+    },
   };
 
   const transporter = nodemailer.createTransport(transportConfig);
@@ -61,10 +86,6 @@ async function sendEmail(type, payload) {
     from: process.env.EMAIL_FROM || 'noreply@ankhydro.com',
     to: process.env.EMAIL_TO,
     subject,
-    html: buildEmailHtml(type, payload)
+    html: buildEmailHtml(type, payload),
   });
 }
-
-module.exports = {
-  sendEmail
-};

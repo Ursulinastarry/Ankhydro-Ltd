@@ -1,7 +1,7 @@
 // src/middlewares/authMiddleware.ts
-import asyncHandler from "./asyncHandler";
+import asyncHandler from "./asyncHandler.js";
 import jwt from "jsonwebtoken";
-import { pool } from "../db";
+import { pool } from "../db.js";
 export const protect = asyncHandler(async (req, res, next) => {
     //  console.log("🔒 Protect middleware invoked");
     let token;

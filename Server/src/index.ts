@@ -20,9 +20,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
+  "ankhydro-ltd.vercel.app",
 ].filter((origin): origin is string => Boolean(origin));
 
 app.use(

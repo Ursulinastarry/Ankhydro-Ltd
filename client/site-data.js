@@ -1,9 +1,12 @@
 // ===== ANK HYDRO — Site Data Connector =====
-// Fetches published data from site-data.json and updates the live website
-// Falls back to localStorage for admin previewing locally
+// Fetches published data from the production backend and updates the live website
+// Falls back to local JSON and localStorage for previewing locally
 
 (function() {
   'use strict';
+
+  const BACKEND_HOST = 'https://ankhydro-ltd-production.up.railway.app';
+  const BACKEND_API = BACKEND_HOST + '/api';
 
   const SiteData = {
     data: null,
@@ -12,9 +15,9 @@
       let jsonData = null;
       let localData = null;
 
-      // Try to load published data from DB-backed API first
+      // Try to load published data from the production backend API first
       try {
-        const resp = await fetch('/api/site-data?v=' + Date.now());
+        const resp = await fetch(BACKEND_API + '/site-data?v=' + Date.now());
         if (resp.ok) {
           jsonData = await resp.json();
         }

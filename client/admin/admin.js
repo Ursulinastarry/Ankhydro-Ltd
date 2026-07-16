@@ -57,7 +57,7 @@ const AdminApp = {
     formData.append('auth_token', btoa(auth.email + ':' + password));
 
     try {
-      const resp = await fetch('/api/upload-image', {
+      const resp = await fetch(this.BACKEND_HOST + '/api/upload-image', {
         method: 'POST',
         body: formData
       });
@@ -92,8 +92,9 @@ const AdminApp = {
     password: 'ank_admin_password'
   },
 
-  DB_API_BASE: '/api/admin',
-  SITE_DATA_API: '/api/site-data',
+  BACKEND_HOST: 'https://ankhydro-ltd-production.up.railway.app',
+  DB_API_BASE: 'https://ankhydro-ltd-production.up.railway.app/api/admin',
+  SITE_DATA_API: 'https://ankhydro-ltd-production.up.railway.app/api/site-data',
   dbAvailable: false,
   data: {
     settings: {},
@@ -1291,7 +1292,7 @@ const AdminApp = {
     }
 
     try {
-      const endpoint = '/api/site-data/publish';
+      const endpoint = this.BACKEND_HOST + '/api/site-data/publish';
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }

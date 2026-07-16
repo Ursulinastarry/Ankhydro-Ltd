@@ -397,7 +397,7 @@
     let posts = defaultPosts;
 
     try {
-      const resp = await fetch('site-data.json?v=' + Date.now());
+      const resp = await fetch('https://ankhydro-ltd-production.up.railway.app/api/site-data?v=' + Date.now());
       if (resp.ok) {
         const data = await resp.json();
         if (data.blog && data.blog.length > 0) {

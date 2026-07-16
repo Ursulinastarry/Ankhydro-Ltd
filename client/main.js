@@ -122,6 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const BACKEND_HOST = 'https://ankhydro-ltd-production.up.railway.app';
+  const BACKEND_API = BACKEND_HOST + '/api';
+
   // ---------- Form Handling ----------
   const contactForm = document.getElementById('contactForm');
   const quoteForm = document.getElementById('quoteForm');
@@ -154,14 +157,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (contactForm) {
     contactForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      submitForm('/api/contact', contactForm, 'contactSuccess');
+      submitForm(BACKEND_API + '/contact', contactForm, 'contactSuccess');
     });
   }
 
   if (quoteForm) {
     quoteForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      submitForm('/api/quote', quoteForm, 'quoteSuccess');
+      submitForm(BACKEND_API + '/quote', quoteForm, 'quoteSuccess');
     });
   }
 

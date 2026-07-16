@@ -1,6 +1,7 @@
 import express, { type Request, type Response } from "express";
 import http from "http";
 import path from "path";
+import { fileURLToPath } from "url";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import fileUpload from "express-fileupload";
@@ -11,6 +12,9 @@ import adminRoutes from "./routes/adminRoutes.js";
 import mpesaRoutes from "./routes/mpesaRoutes.js";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;

@@ -1,4 +1,4 @@
-// ===== ANK HYDRO — Site Data Connector =====
+﻿// ===== ANK HYDRO — Site Data Connector =====
 // Fetches published data from the production backend and updates the live website
 // Falls back to local JSON and localStorage for previewing locally
 
@@ -350,6 +350,7 @@
       });
     },
 
+    applySettings() {
       const s = this.get('settings');
       if (!s || typeof s !== 'object') return;
 
@@ -965,3 +966,4 @@
     SiteData.init();
   }
 })();
+

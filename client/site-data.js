@@ -7,9 +7,12 @@
 
   const BACKEND_HOST = 'https://ankhydro-ltd-production.up.railway.app';
   const BACKEND_API = BACKEND_HOST + '/api';
+  const API_BASE = window.location.origin.startsWith('http') ? window.location.origin + '/api' : BACKEND_API;
 
   const SiteData = {
     data: null,
+    cart: { items: [] },
+    cartKey: 'ank_cart',
 
     async init() {
       let jsonData = null;
@@ -53,6 +56,8 @@
       }
 
       if (!this.data) return;
+
+      this.initCart();
 
       // Run each apply method independently — one failure won't break the rest
       const methods = [
@@ -100,8 +105,251 @@
       return this.data ? this.data[key] : null;
     },
 
-    // ---------- SETTINGS (phone, email, social links, WhatsApp) ----------
-    applySettings() {
+    initCart() {
+      if (!document.body.classList.contains('packages-page')) return;
+      this.cart = { items: [] };
+      try {
+        const stored = localStorage.getItem(this.cartKey);
+        if (stored) this.cart = JSON.parse(stored);
+      } catch (e) {
+        this.cart = { items: [] };
+      }
+      this.renderCartDrawer();
+      this.updateCartUI();
+    },
+
+    saveCart() {
+      try {
+        localStorage.setItem(this.cartKey, JSON.stringify(this.cart));
+      } catch (e) {
+        console.warn('[Cart] Failed to save cart.', e.message || e);
+      }
+      this.updateCartUI();
+    },
+
+    getPackageById(id) {
+      const packages = this.get('packages') || [];
+      return Array.isArray(packages) ? packages.find(p => String(p.id) === String(id)) : null;
+    },
+
+    getServiceName(serviceId) {
+      if (!serviceId) return null;
+      const services = this.get('services') || [];
+      const service = Array.isArray(services) ? services.find(s => String(s.id) === String(serviceId)) : null;
+      return service ? service.title : null;
+    },
+
+    addToCart(pkg) {
+      const existing = this.cart.items.find(item => String(item.id) === String(pkg.id));
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        this.cart.items.push({
+          id: pkg.id,
+          name: pkg.name,
+          price: pkg.price || 0,
+          priceLabel: pkg.priceLabel || '',
+          service: this.getServiceName(pkg.service_id) || pkg.category || '',
+          quantity: 1
+        });
+      }
+      this.saveCart();
+      this.toast('Added to cart', 'success');
+    },
+
+    removeFromCart(packageId) {
+      this.cart.items = this.cart.items.filter(item => String(item.id) !== String(packageId));
+      this.saveCart();
+    },
+
+    updateCartQuantity(packageId, quantity) {
+      const item = this.cart.items.find(i => String(i.id) === String(packageId));
+      if (!item) return;
+      item.quantity = Math.max(1, quantity);
+      this.saveCart();
+    },
+
+    getCartTotal() {
+      return this.cart.items.reduce((sum, item) => sum + (Number(item.price) || 0) * item.quantity, 0);
+    },
+
+    formatCurrency(amount) {
+      return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(amount);
+    },
+
+    openCheckoutModal() {
+      const modal = document.getElementById('cartCheckoutModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      const amountInput = document.getElementById('checkoutAmount');
+      if (amountInput) {
+        const total = this.getCartTotal();
+        amountInput.value = total > 0 ? String(total) : '';
+      }
+    },
+
+    closeCheckoutModal() {
+      const modal = document.getElementById('cartCheckoutModal');
+      if (!modal) return;
+      modal.classList.remove('open');
+    },
+
+    async submitCheckout(event) {
+      event.preventDefault();
+      const form = document.getElementById('cartCheckoutForm');
+      if (!form) return;
+
+      const data = new FormData(form);
+      const payload = {
+        customerName: String(data.get('customerName') || '').trim(),
+        customerEmail: String(data.get('customerEmail') || '').trim(),
+        phone: String(data.get('customerPhone') || '').trim(),
+        deliveryAddress: String(data.get('deliveryAddress') || '').trim(),
+        amount: Number(String(data.get('amount') || '0').replace(/[^0-9]/g, '')),
+        accountReference: String(data.get('accountReference') || '').trim(),
+        transactionDesc: String(data.get('transactionDesc') || '').trim(),
+        service: String(data.get('service') || '').trim(),
+        packageName: String(data.get('packageName') || '').trim(),
+      };
+
+      if (!payload.phone || !payload.amount || !payload.accountReference || !payload.packageName) {
+        alert('Please provide your phone number, amount, package, and account reference.');
+        return;
+      }
+
+      const submitButton = document.getElementById('checkoutSubmitBtn');
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Processing...';
+      }
+
+      try {
+        const response = await fetch(API_BASE + '/mpesa/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Checkout failed');
+        }
+
+        this.cart = { items: [] };
+        this.saveCart();
+        this.updateCartUI();
+        this.closeCheckoutModal();
+        alert('Payment request sent. Check your phone for the M-Pesa prompt.');
+      } catch (error) {
+        console.error('[Cart] Checkout failed', error);
+        alert('Failed to submit payment. Please try again later.');
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Pay with M-Pesa';
+        }
+      }
+    },
+
+    renderCartDrawer() {
+      if (!document.body.classList.contains('packages-page')) return;
+      if (document.getElementById('packageCartDrawer')) return;
+
+      const drawerHtml = `
+        <div id="packageCartDrawer" class="cart-drawer">
+          <div class="cart-header">
+            <h3>Your Cart</h3>
+            <button type="button" class="cart-close">×</button>
+          </div>
+          <div id="cartItemsList" class="cart-items"></div>
+          <div class="cart-summary">
+            <div class="cart-total"><span>Total</span><strong id="cartTotal">KES 0</strong></div>
+            <button type="button" id="cartCheckoutBtn" class="btn btn-primary btn-lg">Checkout</button>
+          </div>
+        </div>
+        <div id="cartDrawerBackdrop" class="cart-backdrop"></div>
+      `;
+
+      const packageSection = document.querySelector('.packages-page .container') || document.body;
+      packageSection.insertAdjacentHTML('beforeend', drawerHtml);
+
+      document.getElementById('cartCheckoutBtn')?.addEventListener('click', () => this.openCheckoutModal());
+      document.getElementById('cartDrawerBackdrop')?.addEventListener('click', () => this.toggleCartDrawer(false));
+      document.querySelector('.cart-drawer .cart-close')?.addEventListener('click', () => this.toggleCartDrawer(false));
+
+      const openCartButton = document.createElement('button');
+      openCartButton.id = 'openCartDrawerBtn';
+      openCartButton.type = 'button';
+      openCartButton.className = 'btn btn-cyan btn-sm open-cart-btn';
+      openCartButton.textContent = 'View Cart';
+      openCartButton.addEventListener('click', () => this.toggleCartDrawer(true));
+      document.body.appendChild(openCartButton);
+    },
+
+    toggleCartDrawer(open) {
+      const drawer = document.getElementById('packageCartDrawer');
+      const backdrop = document.getElementById('cartDrawerBackdrop');
+      if (!drawer || !backdrop) return;
+      drawer.classList.toggle('open', open);
+      backdrop.classList.toggle('open', open);
+    },
+
+    updateCartUI() {
+      const list = document.getElementById('cartItemsList');
+      const total = document.getElementById('cartTotal');
+      const badge = document.getElementById('cartItemCount');
+      const openBtn = document.getElementById('openCartDrawerBtn');
+
+      if (total) {
+        const formatted = this.formatCurrency(this.getCartTotal());
+        total.textContent = formatted;
+      }
+
+      if (badge) {
+        badge.textContent = String(this.cart.items.reduce((sum, item) => sum + item.quantity, 0));
+      }
+
+      if (openBtn) {
+        openBtn.textContent = `Cart (${this.cart.items.reduce((sum, item) => sum + item.quantity, 0)})`;
+      }
+
+      if (!list) return;
+
+      if (this.cart.items.length === 0) {
+        list.innerHTML = '<div class="cart-empty">Your cart is empty. Add a package to continue.</div>';
+        return;
+      }
+
+      list.innerHTML = this.cart.items.map(item => `
+        <div class="cart-item">
+          <div>
+            <strong>${this.escapeHtml(item.name)}</strong>
+            <div class="cart-item-meta">${this.escapeHtml(item.service || '')}</div>
+          </div>
+          <div class="cart-item-actions">
+            <input type="number" min="1" value="${item.quantity}" data-package-id="${item.id}" class="cart-qty-input" />
+            <button type="button" class="btn btn-admin btn-admin-sm btn-admin-danger cart-remove-btn" data-package-id="${item.id}">Remove</button>
+          </div>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.cart-qty-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const target = e.target;
+          const packageId = target.getAttribute('data-package-id');
+          const qty = parseInt(target.value, 10) || 1;
+          this.updateCartQuantity(packageId, qty);
+        });
+      });
+
+      list.querySelectorAll('.cart-remove-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const packageId = button.getAttribute('data-package-id');
+          this.removeFromCart(packageId);
+        });
+      });
+    },
+
       const s = this.get('settings');
       if (!s || typeof s !== 'object') return;
 
@@ -293,7 +541,7 @@
       const packages = this.get('packages');
       if (!packages || !Array.isArray(packages)) return;
       // Only run on the Packages page
-      if (!document.title.includes('Package')) return;
+      if (!window.location.pathname.includes('packages.html') && !document.body.classList.contains('packages-page')) return;
 
       const active = packages
         .filter(p => p.status === 'active')
@@ -336,6 +584,16 @@
           const specs = pkg.specs.split(',').map(s => s.trim()).filter(Boolean);
           specsList.innerHTML = specs.map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
         }
+
+        let addButton = card.querySelector('.add-cart-btn');
+        if (!addButton) {
+          addButton = document.createElement('button');
+          addButton.type = 'button';
+          addButton.className = 'btn btn-primary btn-sm add-cart-btn';
+          addButton.textContent = 'Add to cart';
+          card.appendChild(addButton);
+        }
+        addButton.onclick = () => this.addToCart(pkg);
       });
 
       // If admin has MORE packages than existing cards, add extras to the grid
@@ -354,9 +612,11 @@
               <h3>${this.escapeHtml(pkg.name)}</h3>
               <div class="solution-label"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Call us to enquire</div>
               <ul class="package-specs">${specsList}</ul>
-              <a class="btn ${pkg.featured ? 'btn-primary' : 'btn-cyan'}" href="tel:+254758849293" style="width:100%;justify-content:center;">Call for Quote</a>
+              <button type="button" class="btn ${pkg.featured ? 'btn-primary' : 'btn-cyan'} add-cart-btn" style="width:100%;justify-content:center;">Add to cart</button>
             `;
             grid.appendChild(card);
+            const addButton = card.querySelector('.add-cart-btn');
+            if (addButton) addButton.onclick = () => this.addToCart(pkg);
           }
         }
       }

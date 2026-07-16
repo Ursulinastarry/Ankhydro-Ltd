@@ -1,23 +1,3 @@
--- Run this as a PostgreSQL superuser, for example:
--- psql -U postgres -d postgres -f database/init.sql
-
-CREATE ROLE ankhydro_user WITH LOGIN PASSWORD 'change_this_password';
-CREATE DATABASE ankhydro OWNER ankhydro_user;
-
-\connect ankhydro
-
-CREATE TABLE IF NOT EXISTS contacts (
-  id SERIAL PRIMARY KEY,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  phone TEXT,
-  service TEXT,
-  message TEXT,
-  status TEXT DEFAULT 'Unread',
-  notes TEXT
-);
-
 CREATE TABLE IF NOT EXISTS quotes (
   id SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -80,6 +60,7 @@ CREATE TABLE IF NOT EXISTS packages (
   price INTEGER DEFAULT 0,
   price_label TEXT,
   category TEXT,
+  service_id INTEGER,
   specs TEXT,
   status TEXT DEFAULT 'inactive',
   featured BOOLEAN DEFAULT false,
@@ -179,10 +160,25 @@ CREATE TABLE IF NOT EXISTS file_uploads (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_contacts_created_at ON contacts (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_quotes_created_at ON quotes (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_services_display_order ON services (display_order);
-CREATE INDEX IF NOT EXISTS idx_packages_display_order ON packages (display_order);
-CREATE INDEX IF NOT EXISTS idx_projects_display_order ON projects (display_order);
-CREATE INDEX IF NOT EXISTS idx_blog_posts_date ON blog_posts (date DESC);
-CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log (created_at DESC);
+CREATE TABLE IF NOT EXISTS mpesa_orders (
+  id SERIAL PRIMARY KEY,
+  customer_name TEXT,
+  customer_email TEXT,
+  phone TEXT NOT NULL,
+  service TEXT,
+  package_name TEXT,
+  amount INTEGER NOT NULL,
+  account_reference TEXT NOT NULL,
+  transaction_desc TEXT,
+  delivery_address TEXT,
+  status TEXT DEFAULT 'pending',
+  checkout_request_id TEXT,
+  merchant_request_id TEXT,
+  receipt_number TEXT,
+  transaction_id TEXT,
+  result_code INTEGER,
+  result_desc TEXT,
+  callback_payload JSONB,
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

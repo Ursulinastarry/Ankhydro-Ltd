@@ -42,8 +42,9 @@ function formatBulkPayload(type: string, rows: any[]) {
         id: r.id,
         name: r.name,
         price: r.price || 0,
-        price_label: r.priceLabel || r.price_label || null,
+        priceLabel: r.priceLabel || r.price_label || null,
         category: r.category,
+        service_id: r.service_id || null,
         specs: r.specs,
         status: r.status,
         featured: r.featured || false,
@@ -177,8 +178,8 @@ export async function bulkSave(req: Request, res: Response) {
           );
         case 'packages':
           return pool.query(
-            `INSERT INTO packages (id, name, price, price_label, category, specs, status, featured, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [item.id, item.name, item.price || 0, item.price_label || item.priceLabel || null, item.category, item.specs, item.status, item.featured || false, item.display_order, item.image || null]
+            `INSERT INTO packages (id, name, price, price_label, category, service_id, specs, status, featured, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [item.id, item.name, item.price || 0, item.price_label || item.priceLabel || null, item.category, item.service_id || null, item.specs, item.status, item.featured || false, item.display_order, item.image || null]
           );
         case 'projects':
           return pool.query(

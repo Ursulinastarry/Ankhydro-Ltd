@@ -312,6 +312,13 @@ const AdminApp = {
     }
   },
 
+  loadFromLocalStorage() {
+    const keys = ['settings', 'stats', 'services', 'packages', 'projects', 'blog', 'quotes', 'messages', 'testimonials', 'team', 'faq', 'activity'];
+    keys.forEach((key) => {
+      this.data[key] = this.loadLocal(key);
+    });
+  },
+
   load(key) {
     if (this.dbAvailable) {
       return this.data[key] || ((key === 'stats' || key === 'settings') ? {} : []);
@@ -575,6 +582,26 @@ const AdminApp = {
     return `<img src="../${url}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">`;
   },
 
+  getServiceName(serviceId) {
+    if (!serviceId) return null;
+    const services = this.load('services');
+    const service = services.find((s) => String(s.id) === String(serviceId));
+    return service ? service.title : null;
+  },
+
+  serviceOptionsHtml(selectedId) {
+    const services = this.load('services');
+    const options = ['<option value="">Select service (optional)</option>'];
+    services
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .forEach((service) => {
+        const value = String(service.id);
+        const selected = selectedId && String(selectedId) === value ? ' selected' : '';
+        options.push(`<option value="${value}"${selected}>${service.title}</option>`);
+      });
+    return options.join('');
+  },
+
   renderServices() {
     const items = this.load('services').sort((a, b) => a.order - b.order);
     const tbody = document.getElementById('servicesTable');
@@ -601,7 +628,7 @@ const AdminApp = {
       <tr>
         <td style="display:flex;align-items:center;gap:.5rem;">${this.imgThumb(p.image)} <strong>${p.name}</strong></td>
         <td>${p.priceLabel}</td>
-        <td>${p.category}</td>
+        <td>${this.getServiceName(p.service_id) || p.category || '—'}</td>
         <td><span class="status status-${p.status}">${p.status}</span></td>
         <td>${p.featured ? '⭐' : '—'}</td>
         <td class="actions">
@@ -808,6 +835,9 @@ const AdminApp = {
         </div>
         <div class="form-row">
           <div class="form-group"><label>Category</label><select id="m-category"><option>Solar</option><option>Pumps</option><option>Irrigation</option><option>Infrastructure</option></select></div>
+          <div class="form-group"><label>Service</label><select id="m-service-id">${this.serviceOptionsHtml(item?.service_id)}</select></div>
+        </div>
+        <div class="form-row">
           <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
         </div>
         <div class="form-group"><label>Specifications (comma-separated)</label><textarea id="m-specs">${item?.specs || ''}</textarea></div>
@@ -895,6 +925,7 @@ const AdminApp = {
       setVal('m-status', item.status);
       setVal('m-featured', String(item.featured));
       setVal('m-service', item.service);
+      setVal('m-service-id', item.service_id || '');
     }
 
     document.getElementById('modalOverlay').classList.add('open');
@@ -955,6 +986,7 @@ const AdminApp = {
         item.price = parseInt(val('m-price')) || 0;
         item.priceLabel = val('m-priceLabel');
         item.category = val('m-category');
+        item.service_id = parseInt(val('m-service-id')) || null;
         item.specs = val('m-specs');
         item.status = val('m-status');
         item.featured = val('m-featured') === 'true';

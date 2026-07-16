@@ -21,6 +21,7 @@ router.post('/pay', async (req, res) => {
     customerEmail,
     service,
     packageName,
+    deliveryAddress,
   } = req.body as Record<string, any>;
 
   if (!phone || !amount || !accountReference) {
@@ -30,8 +31,8 @@ router.post('/pay', async (req, res) => {
   let orderResult: any = null;
   try {
     orderResult = await pool.query(
-      `INSERT INTO mpesa_orders (customer_name, customer_email, phone, service, package_name, amount, account_reference, transaction_desc, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING *`,
+      `INSERT INTO mpesa_orders (customer_name, customer_email, phone, service, package_name, amount, account_reference, transaction_desc, delivery_address, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending') RETURNING *`,
       [
         customerName || null,
         customerEmail || null,
@@ -41,6 +42,7 @@ router.post('/pay', async (req, res) => {
         Math.ceil(Number(amount) || 0),
         accountReference,
         transactionDesc || null,
+        deliveryAddress || null,
       ]
     );
 

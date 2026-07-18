@@ -45,7 +45,6 @@ app.use("/api", publicRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/mpesa", mpesaRoutes);
 
-app.use(express.static(path.join(__dirname, "..", "client")));
 app.get("/", (_req: Request, res: Response) => res.send("ANK Hydro backend is live 🚀"));
 
 const server = http.createServer(app);

@@ -117,7 +117,7 @@ export async function adminLogin(req: Request, res: Response) {
     );
 
     if (!admin) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return res.status(401).json({ error: 'not authorized.' });
     }
 
     const token = signToken(admin.email);

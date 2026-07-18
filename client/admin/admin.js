@@ -42,7 +42,6 @@ const AdminApp = {
   async uploadImage(fieldId, section, itemId) {
     const input = document.getElementById(fieldId);
     if (!input || !input.files || !input.files[0]) {
-      // Return existing URL if no new file selected
       const urlInput = document.getElementById(fieldId + '-url');
       return urlInput ? urlInput.value : '';
     }
@@ -52,10 +51,14 @@ const AdminApp = {
     formData.append('section', section);
     formData.append('item_id', String(itemId));
 
+    // Get auth headers, then FORCE delete the Content-Type
+    const headers = this.authHeaders();
+    delete headers['Content-Type']; 
+
     try {
       const resp = await fetch(this.BACKEND_HOST + '/api/admin/upload', {
         method: 'POST',
-        headers: this.authHeaders(), // NOTE: don't set Content-Type here — fetch sets the multipart boundary itself for FormData bodies
+        headers: headers, // Pass the clean headers
         body: formData
       });
       if (this.handleAuthResponse(resp)) return null;

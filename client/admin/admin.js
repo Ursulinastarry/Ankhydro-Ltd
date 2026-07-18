@@ -975,7 +975,15 @@ const AdminApp = {
     switch (type) {
       case 'service':
         item.title = val('m-title');
-        item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        if (!this.editingId) {
+          // Only derive a slug when creating a new service. Regenerating it
+          // on every edit — even ones that don't touch the title — silently
+          // rewrites the slug to a value that no longer matches the
+          // hand-picked <section id="..."> anchors in services.html, which
+          // makes the service vanish from the public site even though the
+          // DB save itself succeeds.
+          item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
         item.category = val('m-category');
         item.description = val('m-description');
         item.status = val('m-status');
@@ -1004,7 +1012,12 @@ const AdminApp = {
         break;
       case 'blog':
         item.title = val('m-title');
-        item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        if (!this.editingId) {
+          // Same reasoning as services: don't regenerate the slug on edit,
+          // or previously shared/bookmarked blog-post.html?slug=... links
+          // break every time the post is updated.
+          item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
         item.category = val('m-category');
         item.author = val('m-author');
         item.content = val('m-content');

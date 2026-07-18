@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { pool, queryOne, queryRows } from '../db.js';
+import { uploadToCloudinary } from '@app/services/cloudinaryService.js';
 
 type AdminRow = Record<string, any>;
 
@@ -511,5 +512,23 @@ export async function deleteItem(req: Request<{ type: string; id: string }>, res
   } catch (error: any) {
     console.error('Delete failed:', error.message || error);
     res.status(500).json({ error: 'Failed to delete item.' });
+  }
+}
+export async function uploadImageHandler(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    // Call your helper function
+    // Assuming 'admin-uploads' is your desired folder name
+    const imageUrl = await uploadToCloudinary(req.file.buffer, 'admin-uploads', `img_${Date.now()}`);
+    
+    res.json({ success: true, url: imageUrl });
+  } catch (error: any) {
+    console.error('Upload failed:', error);
+    res.status(500).json({ error: error.message });
   }
 }

@@ -53,7 +53,7 @@ const AdminApp = {
     formData.append('item_id', String(itemId));
 
     try {
-      const resp = await fetch(this.BACKEND_HOST + '/api/upload-image', {
+      const resp = await fetch(this.BACKEND_HOST + '/api/admin/upload', {
         method: 'POST',
         headers: this.authHeaders(), // NOTE: don't set Content-Type here — fetch sets the multipart boundary itself for FormData bodies
         body: formData

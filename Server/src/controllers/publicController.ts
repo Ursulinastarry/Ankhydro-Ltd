@@ -187,45 +187,4 @@ export async function publishSiteData(_req: Request, res: Response) {
   }
 }
 
-export async function uploadImage(req: Request, res: Response) {
-  try {
-    if (!req.files || !req.files.image) {
-      return res.status(400).json({ success: false, error: 'No image uploaded.' });
-    }
 
-    let image: any = req.files.image;
-    if (Array.isArray(image)) image = image[0];
-
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
-    if (!allowedTypes.includes(image.mimetype)) {
-      return res.status(400).json({ success: false, error: 'Invalid file type. Allowed: JPG, PNG, WebP, GIF, SVG' });
-    }
-
-    if (image.size > 5 * 1024 * 1024) {
-      return res.status(400).json({ success: false, error: 'File too large. Maximum 5MB' });
-    }
-
-    const section = String(req.body.section || 'general').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'general';
-    const itemId = String(req.body.item_id || 'item').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'item';
-    const uploadDir = path.join(__dirname, '..', '..', '..', 'client', 'uploads', section);
-    await fs.promises.mkdir(uploadDir, { recursive: true });
-
-    let ext = path.extname(image.name).toLowerCase().replace(/[^a-z0-9.]/g, '');
-    if (!ext) ext = '.jpg';
-    const filename = `${section}-${itemId}-${Date.now()}${ext}`;
-    const filepath = path.join(uploadDir, filename);
-
-    await fs.promises.writeFile(filepath, image.data);
-
-    const fileUrl = `uploads/${section}/${filename}`;
-    await queryOne(
-      'INSERT INTO file_uploads (filename, section, item_id, url, mime_type, size) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-      [filename, section, itemId, fileUrl, image.mimetype, image.size]
-    );
-
-    res.json({ success: true, url: fileUrl });
-  } catch (error: any) {
-    console.error('Image upload failed:', error.message || error);
-    res.status(500).json({ success: false, error: 'Image upload failed.' });
-  }
-}

@@ -139,6 +139,7 @@ const AdminApp = {
     }
 
     await this.loadAdminData();
+    await this.loadMpesaOrders();
     await this.seedDefaultData();
     this.setupNavigation();
     this.setupSidebar();
@@ -274,7 +275,59 @@ const AdminApp = {
       this.loadFromLocalStorage();
     }
   },
+  async loadMpesaOrders() {
+    const tbody = document.getElementById('mpesa-orders-tbody');
+    if (!tbody) return;
 
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading transactions...</td></tr>';
+
+    try {
+        const response = await fetch('/api/mpesa/orders');
+        if (!response.ok) throw new Error('Failed to fetch M-Pesa data');
+        
+        const orders = await response.json();
+        
+        if (orders.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No transactions found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = orders.map(order => {
+            // Setup a status badge style
+            let badgeClass = 'badge-pending';
+            if (order.status === 'paid') badgeClass = 'badge-success';
+            if (order.status === 'failed') badgeClass = 'badge-danger';
+
+            const date = new Date(order.created_at).toLocaleString();
+
+            return `
+                <tr>
+                    <td>#${order.id}</td>
+                    <td>
+                        <strong>${order.customer_name || 'N/A'}</strong><br>
+                        <small class="text-muted">${order.customer_email || ''}</small>
+                    </td>
+                    <td>${order.phone}</td>
+                    <td>
+                        <strong>${order.service || 'Direct Pay'}</strong><br>
+                        <small class="text-muted">${order.package_name || ''}</small>
+                    </td>
+                    <td><strong>${Number(order.amount).toLocaleString()}</strong></td>
+                    <td>
+                        <small>Ref: ${order.account_reference}</small><br>
+                        <strong>${order.receipt_number || '<span class="text-muted">—</span>'}</strong>
+                    </td>
+                    <td><span class="badge ${badgeClass}">${order.status.toUpperCase()}</span></td>
+                    <td><small>${date}</small></td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('M-Pesa load error:', error);
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:red;">Error loading transactions: ${error.message}</td></tr>`;
+    }
+},
   loadLocal(key) {
     try {
       const raw = localStorage.getItem(this.DB_KEYS[key]);

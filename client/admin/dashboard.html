@@ -210,7 +210,32 @@
           </table>
         </div>
       </div>
-
+      <!-- M-Pesa Orders Section -->
+<section id="mpesa-section" class="admin-section hidden">
+    <div class="section-header">
+        <h2>M-Pesa Transactions</h2>
+        <button class="btn btn-secondary" onclick="adminApp.loadMpesaOrders()">🔄 Refresh</button>
+    </div>
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Customer</th>
+                    <th>Contact</th>
+                    <th>Service/Package</th>
+                    <th>Amount (KES)</th>
+                    <th>Ref / Receipt</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="mpesa-orders-tbody">
+                <!-- Dynamic rows injected via JS -->
+            </tbody>
+        </table>
+    </div>
+</section>
       <!-- ===== PROJECTS ===== -->
       <div class="section-panel" id="section-projects" style="display:none;">
         <div class="section-toolbar">

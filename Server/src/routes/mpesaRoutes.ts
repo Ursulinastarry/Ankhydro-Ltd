@@ -127,5 +127,20 @@ router.post('/callback', async (req, res) => {
     res.status(500).json({ error: 'Failed to process M-Pesa callback.' });
   }
 });
-
+// GET /api/mpesa/orders - Fetch all orders for the admin panel
+router.get('/orders', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, customer_name, customer_email, phone, service, package_name, 
+              amount, account_reference, status, receipt_number, result_desc, 
+              created_at, paid_at 
+       FROM mpesa_orders 
+       ORDER BY id DESC`
+    );
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('[M-Pesa] Failed to fetch admin orders:', error.message || error);
+    res.status(500).json({ error: 'Failed to retrieve M-Pesa transactions.' });
+  }
+});
 export default router;

@@ -34,7 +34,8 @@ function formatBulkPayload(type: string, rows: any[]) {
         category: r.category,
         description: r.description,
         status: r.status,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
         image: r.image || null,
       }));
     case 'packages':
@@ -42,13 +43,14 @@ function formatBulkPayload(type: string, rows: any[]) {
         id: r.id,
         name: r.name,
         price: r.price || 0,
-        priceLabel: r.priceLabel || r.price_label || null,
+        priceLabel: r.price_label || null,
         category: r.category,
         service_id: r.service_id || null,
         specs: r.specs,
         status: r.status,
         featured: r.featured || false,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
         image: r.image || null,
       }));
     case 'projects':
@@ -64,7 +66,8 @@ function formatBulkPayload(type: string, rows: any[]) {
         image2: r.image2 || null,
         client: r.client || null,
         testimonial: r.testimonial || null,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
       }));
     case 'blog':
       return rows.map((r) => ({
@@ -89,7 +92,8 @@ function formatBulkPayload(type: string, rows: any[]) {
         rating: r.rating || 5,
         text: r.text,
         status: r.status,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
         image: r.image || null,
       }));
     case 'team':
@@ -99,7 +103,8 @@ function formatBulkPayload(type: string, rows: any[]) {
         role: r.role,
         bio: r.bio,
         status: r.status,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
         image: r.image || null,
       }));
     case 'faq':
@@ -109,7 +114,8 @@ function formatBulkPayload(type: string, rows: any[]) {
         answer: r.answer,
         category: r.category,
         status: r.status,
-        display_order: r.order || r.display_order || 0,
+        order: r.display_order || 0,
+        display_order: r.display_order || 0,
       }));
     default:
       return rows;
@@ -165,59 +171,72 @@ export async function bulkSave(req: Request, res: Response) {
     return res.status(400).json({ error: 'Bulk writes are not supported for this content type.' });
   }
 
-  try {
-    await pool.query('BEGIN');
-    await pool.query(`DELETE FROM ${table}`);
+  // Use a single checked-out client for the whole transaction. Calling
+  // pool.query() directly for BEGIN/COMMIT/ROLLBACK is unsafe — each call
+  // can be routed to a different pooled connection, so the transaction
+  // never actually wraps the statements and a connection can be left
+  // "idle in transaction" until the pool eventually breaks.
+  const client = await pool.connect();
 
-    const insertPromises = items.map((item) => {
+  try {
+    await client.query('BEGIN');
+    await client.query(`DELETE FROM ${table}`);
+
+    for (const item of items) {
       switch (type) {
         case 'services':
-          return pool.query(
+          await client.query(
             `INSERT INTO services (id, title, slug, category, description, status, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [item.id, item.title, item.slug, item.category, item.description, item.status, item.display_order, item.image || null]
+            [item.id, item.title, item.slug, item.category, item.description, item.status, item.display_order || item.order || 0, item.image || null]
           );
+          break;
         case 'packages':
-          return pool.query(
+          await client.query(
             `INSERT INTO packages (id, name, price, price_label, category, service_id, specs, status, featured, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-            [item.id, item.name, item.price || 0, item.price_label || item.priceLabel || null, item.category, item.service_id || null, item.specs, item.status, item.featured || false, item.display_order, item.image || null]
+            [item.id, item.name, item.price || 0, item.price_label || item.priceLabel || null, item.category, item.service_id || null, item.specs, item.status, item.featured || false, item.display_order || item.order || 0, item.image || null]
           );
+          break;
         case 'projects':
-          return pool.query(
+          await client.query(
             `INSERT INTO projects (id, title, location, service, description, date, status, image, image2, client, testimonial, display_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-            [item.id, item.title, item.location, item.service, item.description, item.date || null, item.status, item.image || null, item.image2 || null, item.client || null, item.testimonial || null, item.display_order]
+            [item.id, item.title, item.location, item.service, item.description, item.date || null, item.status, item.image || null, item.image2 || null, item.client || null, item.testimonial || null, item.display_order || item.order || 0]
           );
+          break;
         case 'blog':
-          return pool.query(
+          await client.query(
             `INSERT INTO blog_posts (id, title, slug, category, author, excerpt, content, date, status, image, tags) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
             [item.id, item.title, item.slug, item.category, item.author, item.excerpt || null, item.content || null, item.date || null, item.status, item.image || null, item.tags || null]
           );
+          break;
         case 'testimonials':
-          return pool.query(
+          await client.query(
             `INSERT INTO testimonials (id, client, location, service, rating, text, status, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [item.id, item.client, item.location, item.service, item.rating || 5, item.text, item.status, item.display_order, item.image || null]
+            [item.id, item.client, item.location, item.service, item.rating || 5, item.text, item.status, item.display_order || item.order || 0, item.image || null]
           );
+          break;
         case 'team':
-          return pool.query(
+          await client.query(
             `INSERT INTO team_members (id, name, role, bio, status, display_order, image) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [item.id, item.name, item.role, item.bio, item.status, item.display_order, item.image || null]
+            [item.id, item.name, item.role, item.bio, item.status, item.display_order || item.order || 0, item.image || null]
           );
+          break;
         case 'faq':
-          return pool.query(
+          await client.query(
             `INSERT INTO faq_items (id, question, answer, category, status, display_order) VALUES ($1,$2,$3,$4,$5,$6)`,
-            [item.id, item.question, item.answer, item.category, item.status, item.display_order]
+            [item.id, item.question, item.answer, item.category, item.status, item.display_order || item.order || 0]
           );
-        default:
-          return Promise.resolve();
+          break;
       }
-    });
+    }
 
-    await Promise.all(insertPromises);
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (error: any) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('Bulk save failed:', error.message || error);
     res.status(500).json({ error: 'Bulk save failed.' });
+  } finally {
+    client.release();
   }
 }
 

@@ -20,12 +20,19 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 const allowedOrigins = [
-  "ankhydro-ltd.vercel.app",
+  "https://ankhydro-ltd.vercel.app",
 ].filter((origin): origin is string => Boolean(origin));
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow non-browser requests (curl, Postman, server-to-server, M-Pesa
+      // callbacks) which don't send an Origin header at all.
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      return callback(new Error("Not allowed by CORS"));
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   })

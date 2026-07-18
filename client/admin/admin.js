@@ -45,7 +45,7 @@ const AdminApp = {
       const urlInput = document.getElementById(fieldId + '-url');
       return urlInput ? urlInput.value : '';
     }
-
+    console.log('File to upload:', input.files[0]); // Check if this is defined
     const formData = new FormData();
     formData.append('image', input.files[0]);
     formData.append('section', section);

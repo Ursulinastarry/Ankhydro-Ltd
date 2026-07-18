@@ -7,7 +7,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 const router = express.Router();
-
+console.log("Admin routes initialized");
 router.get('/all', adminController.getAdminAll);
 router.post('/login', adminController.adminLogin);
 router.post('/upload', 

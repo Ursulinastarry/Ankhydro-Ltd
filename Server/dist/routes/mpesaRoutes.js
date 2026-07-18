@@ -7,14 +7,14 @@ function normalizeMpesaPayload(body) {
     return body?.Body?.stkCallback || body?.stkCallback || body;
 }
 router.post('/pay', async (req, res) => {
-    const { phone, amount, accountReference, transactionDesc, customerName, customerEmail, service, packageName, } = req.body;
+    const { phone, amount, accountReference, transactionDesc, customerName, customerEmail, service, packageName, deliveryAddress, } = req.body;
     if (!phone || !amount || !accountReference) {
         return res.status(400).json({ error: 'phone, amount and accountReference are required.' });
     }
     let orderResult = null;
     try {
-        orderResult = await pool.query(`INSERT INTO mpesa_orders (customer_name, customer_email, phone, service, package_name, amount, account_reference, transaction_desc, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING *`, [
+        orderResult = await pool.query(`INSERT INTO mpesa_orders (customer_name, customer_email, phone, service, package_name, amount, account_reference, transaction_desc, delivery_address, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending') RETURNING *`, [
             customerName || null,
             customerEmail || null,
             phone,
@@ -23,6 +23,7 @@ router.post('/pay', async (req, res) => {
             Math.ceil(Number(amount) || 0),
             accountReference,
             transactionDesc || null,
+            deliveryAddress || null,
         ]);
         const order = orderResult.rows[0];
         const mpesaResponse = await mpesaService.initiateSTKPush(phone, order.amount, order.account_reference, order.transaction_desc || order.account_reference);
@@ -81,6 +82,51 @@ router.post('/callback', async (req, res) => {
     catch (error) {
         console.error('[M-Pesa] Callback processing failed:', error.message || error);
         res.status(500).json({ error: 'Failed to process M-Pesa callback.' });
+    }
+});
+// ---------------------------------------------------------------------
+// Admin dashboard endpoints — list orders from mpesa_orders and let an
+// admin update an order's status by hand (e.g. reconciling a payment that
+// the callback missed). These are separate from the /pay and /callback
+// routes above, which are the customer-facing checkout + Safaricom webhook.
+// ---------------------------------------------------------------------
+router.get('/orders', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM mpesa_orders ORDER BY created_at DESC LIMIT 500`);
+        res.json({ success: true, orders: result.rows });
+    }
+    catch (error) {
+        console.error('[M-Pesa] Failed to fetch orders:', error.message || error);
+        res.status(500).json({ error: 'Failed to fetch M-Pesa orders.' });
+    }
+});
+router.get('/orders/:id', async (req, res) => {
+    try {
+        const order = await queryOne(`SELECT * FROM mpesa_orders WHERE id=$1`, [req.params.id]);
+        if (!order)
+            return res.status(404).json({ error: 'Order not found.' });
+        res.json({ success: true, order });
+    }
+    catch (error) {
+        console.error('[M-Pesa] Failed to fetch order:', error.message || error);
+        res.status(500).json({ error: 'Failed to fetch order.' });
+    }
+});
+const ALLOWED_ORDER_STATUSES = ['pending', 'paid', 'failed', 'cancelled'];
+router.patch('/orders/:id', async (req, res) => {
+    const { status } = req.body;
+    if (!status || !ALLOWED_ORDER_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${ALLOWED_ORDER_STATUSES.join(', ')}` });
+    }
+    try {
+        const result = await pool.query(`UPDATE mpesa_orders SET status=$1, paid_at = CASE WHEN $1='paid' AND paid_at IS NULL THEN now() ELSE paid_at END WHERE id=$2 RETURNING *`, [status, req.params.id]);
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'Order not found.' });
+        res.json({ success: true, order: result.rows[0] });
+    }
+    catch (error) {
+        console.error('[M-Pesa] Failed to update order status:', error.message || error);
+        res.status(500).json({ error: 'Failed to update order status.' });
     }
 });
 export default router;

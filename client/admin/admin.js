@@ -3,7 +3,7 @@
 const AdminApp = {
   // ---------- IMAGE UPLOAD HELPER ----------
   imageFieldHtml(label, fieldId, currentUrl) {
-    const preview = currentUrl ? `<img src="../${currentUrl}" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:.5rem;display:block;" id="${fieldId}-preview">` : `<img id="${fieldId}-preview" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:.5rem;display:none;">`;
+    const preview = currentUrl ? `<img src="${this.resolveImageUrl(currentUrl)}" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:.5rem;display:block;" id="${fieldId}-preview">` : `<img id="${fieldId}-preview" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:.5rem;display:none;">`;
     return `
       <div class="form-group">
         <label>${label}</label>
@@ -61,16 +61,21 @@ const AdminApp = {
         method: 'POST',
         body: formData
       });
-      const result = await resp.json();
-      if (result.success) {
+      let result;
+      try {
+        result = await resp.json();
+      } catch (parseErr) {
+        throw new Error(`Server returned a non-JSON response (status ${resp.status})`);
+      }
+      if (resp.ok && result.success) {
         return result.url;
       } else {
-        this.toast('Image upload failed: ' + (result.error || 'Unknown error'), 'error');
-        return '';
+        this.toast('Image upload failed: ' + (result.error || `Server responded ${resp.status}`), 'error');
+        return null; // distinct from '' (no file chosen) so callers know it failed
       }
     } catch (err) {
       this.toast('Image upload error: ' + err.message, 'error');
-      return '';
+      return null;
     }
   },
 
@@ -299,53 +304,71 @@ const AdminApp = {
     this.data[key] = data;
   },
 
-  save(key, data) {
+  async save(key, data) {
     if (this.dbAvailable) {
       this.data[key] = data;
-      this.syncKey(key, data);
+      return await this.syncKey(key, data);
     } else {
       this.saveLocal(key, data);
+      // No DB connection — this was only ever written to localStorage.
+      return false;
     }
   },
 
   async syncKey(key, data) {
-    if (!this.dbAvailable) return;
+    if (!this.dbAvailable) return false;
     try {
       const headers = { 'Content-Type': 'application/json' };
+      let resp;
       if (['services', 'packages', 'projects', 'blog', 'testimonials', 'team', 'faq'].includes(key)) {
-        await fetch(`${this.DB_API_BASE}/bulk`, {
+        resp = await fetch(`${this.DB_API_BASE}/bulk`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ type: key, items: data })
         });
       } else if (key === 'settings') {
-        await fetch(`${this.DB_API_BASE}/settings`, {
+        resp = await fetch(`${this.DB_API_BASE}/settings`, {
           method: 'PUT',
           headers,
           body: JSON.stringify(data)
         });
       } else if (key === 'stats') {
-        await fetch(`${this.DB_API_BASE}/stats`, {
+        resp = await fetch(`${this.DB_API_BASE}/stats`, {
           method: 'PUT',
           headers,
           body: JSON.stringify(data)
         });
+      } else {
+        return true; // key not DB-backed (e.g. activity handled separately)
       }
+
+      if (!resp.ok) {
+        let detail = '';
+        try { detail = (await resp.json()).error || ''; } catch (e) { /* non-JSON error body */ }
+        throw new Error(`Server responded ${resp.status}${detail ? ' — ' + detail : ''}`);
+      }
+      return true;
     } catch (error) {
-      console.warn(`Failed to sync ${key} to DB.`, error.message || error);
+      console.error(`Failed to sync ${key} to DB.`, error.message || error);
+      this.toast(`Could not save to the database: ${error.message || error}`, 'error');
+      return false;
     }
   },
 
   async updateItem(type, id, patch) {
-    if (!this.dbAvailable) return;
+    if (!this.dbAvailable) return false;
     try {
-      await fetch(`${this.DB_API_BASE}/${type}/${id}`, {
+      const resp = await fetch(`${this.DB_API_BASE}/${type}/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch)
       });
+      if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+      return true;
     } catch (error) {
-      console.warn(`Failed to update ${type}/${id}`, error.message || error);
+      console.error(`Failed to update ${type}/${id}`, error.message || error);
+      this.toast(`Could not save changes to the database: ${error.message || error}`, 'error');
+      return false;
     }
   },
 
@@ -545,9 +568,21 @@ const AdminApp = {
     this.loadSettings();
   },
 
+  // Resolves a stored image path/URL for display from within /admin/.
+  // Uploaded images can come back as a full URL (https://...), a root-relative
+  // path (/uploads/...), or a bare relative path (uploads/...). Blindly
+  // prefixing everything with "../" (as this used to do) breaks the first two
+  // cases and is why images could look "missing" even though the DB value
+  // itself was fine.
+  resolveImageUrl(url) {
+    if (!url) return '';
+    if (/^(https?:)?\/\//i.test(url) || url.startsWith('/')) return url;
+    return '../' + url;
+  },
+
   imgThumb(url) {
     if (!url) return '<span style="color:var(--gray-400);font-size:.75rem;">No image</span>';
-    return `<img src="../${url}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">`;
+    return `<img src="${this.resolveImageUrl(url)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">`;
   },
 
   getServiceName(serviceId) {
@@ -930,17 +965,39 @@ const AdminApp = {
       items.push(item);
     }
 
-    // Upload images if present (except faq which has no image)
+    // Upload images if present (except faq which has no image).
+    // uploadImage() returns: a URL string on success, '' if the user didn't
+    // pick a new file (use whatever's in the hidden -url field, which may
+    // itself be '' if they hit Remove), or null if the upload attempt failed.
+    // Treating a failed upload the same as "no image" is what was silently
+    // writing blank/null images to the database — so on failure we now stop
+    // the save entirely instead of continuing with the other fields.
+    const resolveImage = async (fieldId, section, id) => {
+      const result = await this.uploadImage(fieldId, section, id);
+      if (result === null) return { failed: true, value: undefined };
+      if (result) return { failed: false, value: result };
+      const hidden = document.getElementById(fieldId + '-url');
+      return { failed: false, value: hidden ? hidden.value : '' };
+    };
+
     if (type !== 'faq') {
-      const imgUrl = await this.uploadImage('m-image', type, item.id);
-      if (imgUrl) item.image = imgUrl;
-      else if (imgUrl === '' && !document.getElementById('m-image-url')?.value) item.image = '';
+      const img = await resolveImage('m-image', type, item.id);
+      if (img.failed) {
+        if (!this.editingId) items.splice(items.indexOf(item), 1); // don't leave a half-created item in local state
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+        return; // uploadImage() already showed the error toast
+      }
+      item.image = img.value;
     }
     // Project has before/after images
     if (type === 'project') {
-      const img2Url = await this.uploadImage('m-image2', type, item.id + '-after');
-      if (img2Url) item.image2 = img2Url;
-      else if (img2Url === '' && !document.getElementById('m-image2-url')?.value) item.image2 = '';
+      const img2 = await resolveImage('m-image2', type, item.id + '-after');
+      if (img2.failed) {
+        if (!this.editingId) items.splice(items.indexOf(item), 1);
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+        return;
+      }
+      item.image2 = img2.value;
     }
 
     // Populate fields based on type
@@ -1032,12 +1089,21 @@ const AdminApp = {
         break;
     }
 
-    this.save(storeKey, items);
+    const dbSaved = await this.save(storeKey, items);
+
+    if (this.dbAvailable && !dbSaved) {
+      // syncKey() already showed the specific error toast. Keep the modal open
+      // (with the image already uploaded, so the user doesn't lose that step)
+      // so they can retry instead of believing this was saved when it wasn't.
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Retry Save'; }
+      return;
+    }
+
     this.logActivity(this.editingId ? `Updated ${type}: ${item.title || item.name || item.client || item.question}` : `Added new ${type}: ${item.title || item.name || item.client || item.question}`, '📋');
     this.closeModal();
     this.renderAll();
     this.renderDashboard();
-    this.toast('Saved successfully!', 'success');
+    this.toast(this.dbAvailable ? 'Saved successfully!' : 'Saved locally — no database connection, so this will not persist.', this.dbAvailable ? 'success' : 'error');
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
   },
 
@@ -1056,7 +1122,7 @@ const AdminApp = {
     let items = this.load(storeKey);
     const item = items.find(i => i.id === id);
     items = items.filter(i => i.id !== id);
-    this.save(storeKey, items);
+    await this.save(storeKey, items);
     if (this.dbAvailable) {
       try {
         await fetch(`${this.DB_API_BASE}/${storeKey}/${id}`, { method: 'DELETE' });
@@ -1075,7 +1141,7 @@ const AdminApp = {
     const item = items.find(i => i.id === id);
     if (item) {
       item.status = newStatus;
-      this.save(storeKey, items);
+      await this.save(storeKey, items);
       if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
         await this.updateItem(storeKey, id, { status: newStatus });
       }
@@ -1086,7 +1152,7 @@ const AdminApp = {
   },
 
   // ---------- DETAIL VIEW ----------
-  viewDetail(type, id) {
+  async viewDetail(type, id) {
     const storeKey = type === 'quote' ? 'quotes' : 'messages';
     const items = this.load(storeKey);
     const item = items.find(i => i.id === id);
@@ -1120,7 +1186,7 @@ const AdminApp = {
       // Mark as read
       if (item.status === 'Unread') {
         item.status = 'Read';
-        this.save(storeKey, items);
+        await this.save(storeKey, items);
         this.renderMessages();
         this.renderDashboard();
       }
@@ -1148,7 +1214,7 @@ const AdminApp = {
     const item = items.find(i => i.id === id);
     if (item) {
       item.notes = document.getElementById('detail-notes')?.value || '';
-      this.save(storeKey, items);
+      await this.save(storeKey, items);
       if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
         await this.updateItem(storeKey, id, { notes: item.notes });
       }
@@ -1158,14 +1224,15 @@ const AdminApp = {
 
   // ---------- STATS ----------
   setupStats() {
-    document.getElementById('saveStatsBtn')?.addEventListener('click', () => {
+    document.getElementById('saveStatsBtn')?.addEventListener('click', async () => {
       const stats = {
         boreholes: parseInt(document.getElementById('stat-boreholes')?.value) || 0,
         solar: parseInt(document.getElementById('stat-solar')?.value) || 0,
         clients: parseInt(document.getElementById('stat-clients')?.value) || 0,
         counties: parseInt(document.getElementById('stat-counties')?.value) || 0
       };
-      this.save('stats', stats);
+      const ok = await this.save('stats', stats);
+      if (this.dbAvailable && !ok) return; // error toast already shown by syncKey
       this.logActivity('Updated homepage stats', '📈');
       this.toast('Stats saved!', 'success');
     });
@@ -1184,7 +1251,7 @@ const AdminApp = {
 
   // ---------- SETTINGS ----------
   setupSettings() {
-    document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
+    document.getElementById('saveSettingsBtn')?.addEventListener('click', async () => {
       const val = (id) => document.getElementById(id)?.value || '';
       const settings = {
         company: val('set-company'), tagline: val('set-tagline'),
@@ -1195,7 +1262,8 @@ const AdminApp = {
         linkedin: val('set-linkedin'), youtube: val('set-youtube'),
         twitter: val('set-twitter'), ga: val('set-ga')
       };
-      this.save('settings', settings);
+      const ok = await this.save('settings', settings);
+      if (this.dbAvailable && !ok) return; // error toast already shown by syncKey
       this.logActivity('Updated site settings', '🔧');
       this.toast('Settings saved!', 'success');
     });

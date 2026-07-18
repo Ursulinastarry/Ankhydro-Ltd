@@ -511,32 +511,186 @@
         });
       }
 
-      // --- Services page (services.html) — update existing sections ---
+      // --- Services page (services.html) — fully sync detail sections ---
       if (document.title.includes('Services')) {
-        published.forEach(svc => {
-          if (!svc.slug) return;
-          const section = document.getElementById(svc.slug);
-          if (!section) return;
-
-          // Update title
-          const h2 = section.querySelector('h2');
-          if (h2) h2.textContent = svc.title;
-
-          // Update category eyebrow and description
-          const eyebrow = section.querySelector('.eyebrow');
-          if (eyebrow) {
-            eyebrow.textContent = svc.category || '';
-            const desc = eyebrow.parentElement?.querySelector('p:not(.eyebrow)');
-            if (desc && svc.description) desc.textContent = svc.description;
-          }
-
-          // Update image if provided
-          if (svc.image) {
-            const img = section.querySelector('.service-img img, img');
-            if (img) img.src = svc.image;
-          }
-        });
+        this.applyServicesDetailPage(published);
       }
+    },
+
+    // Pull optional extended fields out of a service row without assuming a
+    // fixed schema — falls back to null/existing markup if not present, so we
+    // never blank out custom section content the admin panel doesn't manage.
+    getServiceFeatures(svc) {
+      const raw = svc.features ?? svc.bullets ?? svc.highlights ?? svc.points ?? svc.feature_list;
+      if (!raw) return null;
+      if (Array.isArray(raw)) return raw.filter(Boolean);
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) return parsed.filter(Boolean);
+        } catch (e) { /* not JSON — treat as delimited text */ }
+        return trimmed.split(/\r?\n|\|/).map(s => s.trim()).filter(Boolean);
+      }
+      return null;
+    },
+
+    getServiceCta(svc) {
+      const text = svc.cta_text || svc.ctaText || svc.cta_label || svc.ctaLabel || null;
+      const link = svc.cta_link || svc.ctaLink || svc.cta_url || svc.ctaUrl || null;
+      return { text, link };
+    },
+
+    // Known ids for the two-column sections vs. the small infrastructure cards —
+    // each has different markup so they need different update logic.
+    STANDARD_SECTION_IDS: [
+      'solar-installation', 'hybrid-solar', 'hydrological-survey',
+      'borehole-drilling', 'borehole-rehabilitation', 'pump-installation', 'irrigation'
+    ],
+    INFRA_CARD_IDS: ['tank-tower', 'solar-structure'],
+
+    applyServicesDetailPage(published) {
+      const main = document.querySelector('main') || document.body;
+      const infraSection = document.getElementById('infrastructure');
+      const insertAnchor = infraSection || document.querySelector('.cta-banner') || null;
+      const publishedSlugs = new Set(published.map(s => s.slug).filter(Boolean));
+
+      published.forEach((svc, i) => {
+        if (!svc.slug) return;
+        const el = document.getElementById(svc.slug);
+
+        if (el && this.INFRA_CARD_IDS.includes(svc.slug)) {
+          this.updateInfraCard(el, svc);
+        } else if (el) {
+          this.updateStandardSection(el, svc);
+        } else {
+          // Service exists in the DB but has no matching section in the HTML —
+          // this used to mean it silently never appeared. Build one now.
+          const section = this.buildStandardSection(svc, i);
+          if (insertAnchor) insertAnchor.before(section);
+          else main.appendChild(section);
+        }
+      });
+
+      // Hide sections for services that were unpublished/removed in the DB
+      // instead of leaving stale hardcoded content visible.
+      [...this.STANDARD_SECTION_IDS, ...this.INFRA_CARD_IDS].forEach(id => {
+        if (publishedSlugs.has(id)) return;
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+
+      // Reorder the standard sections (existing + newly created) to match the
+      // admin-configured display order. Infra cards and the CTA banner stay put.
+      const orderedStandard = published
+        .filter(s => s.slug && !this.INFRA_CARD_IDS.includes(s.slug))
+        .map(s => document.getElementById(s.slug))
+        .filter(Boolean);
+
+      orderedStandard.forEach(sec => {
+        if (insertAnchor) main.insertBefore(sec, insertAnchor);
+        else main.appendChild(sec);
+      });
+    },
+
+    updateStandardSection(section, svc) {
+      const h2 = section.querySelector('h2');
+      if (h2) h2.textContent = svc.title;
+
+      const eyebrow = section.querySelector('.eyebrow');
+      if (eyebrow) {
+        eyebrow.textContent = svc.category || eyebrow.textContent;
+        const desc = eyebrow.parentElement?.querySelector('p:not(.eyebrow)');
+        if (desc && svc.description) desc.textContent = svc.description;
+      }
+
+      // Only touch the bullet list if the DB actually supplies one — otherwise
+      // leave the hand-written feature list in the HTML alone.
+      const features = this.getServiceFeatures(svc);
+      if (features && features.length) {
+        const list = section.querySelector('ul.content-section ul') || section.querySelector('.content-section');
+        if (list) list.innerHTML = features.map(f => `<li>${this.escapeHtml(f)}</li>`).join('');
+      }
+
+      // Same for the CTA button text — the href always follows the slug
+      // convention unless the DB overrides it.
+      const cta = this.getServiceCta(svc);
+      const ctaLink = section.querySelector('a.btn');
+      if (ctaLink) {
+        if (cta.text) ctaLink.textContent = cta.text;
+        ctaLink.href = cta.link || ('quote.html?service=' + encodeURIComponent(svc.slug));
+      }
+
+      if (svc.image) {
+        const img = section.querySelector('.service-img img, img');
+        if (img) img.src = svc.image;
+      }
+
+      section.style.display = '';
+    },
+
+    updateInfraCard(card, svc) {
+      const heading = card.querySelector('h3, h2');
+      if (heading) heading.textContent = svc.title;
+
+      const desc = card.querySelector('p');
+      if (desc && svc.description) desc.textContent = svc.description;
+
+      const cta = this.getServiceCta(svc);
+      const ctaLink = card.querySelector('a.btn');
+      if (ctaLink) {
+        if (cta.text) ctaLink.textContent = cta.text;
+        ctaLink.href = cta.link || ('quote.html?service=' + encodeURIComponent(svc.slug));
+      }
+
+      if (svc.image) {
+        const img = card.querySelector('img');
+        if (img) {
+          img.src = svc.image;
+          img.alt = svc.title || img.alt;
+        }
+      }
+
+      card.style.display = '';
+    },
+
+    buildStandardSection(svc, index) {
+      const section = document.createElement('section');
+      section.className = 'section' + (index % 2 === 1 ? ' bg-gray' : '');
+      section.id = svc.slug;
+
+      const features = this.getServiceFeatures(svc);
+      const featuresHtml = features && features.length
+        ? `<ul class="content-section" style="margin-top:1rem;"><ul>${features.map(f => `<li>${this.escapeHtml(f)}</li>`).join('')}</ul></ul>`
+        : '';
+
+      const cta = this.getServiceCta(svc);
+      const ctaText = cta.text || 'Get a Quote';
+      const ctaLink = cta.link || ('quote.html?service=' + encodeURIComponent(svc.slug));
+      const imgSrc = svc.image || 'images/solar-panel-daytime.jpg';
+
+      const textCol = `
+        <div class="fade-up">
+          <p class="eyebrow">${this.escapeHtml(svc.category || '')}</p>
+          <h2 style="font-size:1.6rem;">${this.escapeHtml(svc.title || '')}</h2>
+          <p>${this.escapeHtml(svc.description || '')}</p>
+          ${featuresHtml}
+          <a class="btn btn-primary mt-3" href="${ctaLink}">${this.escapeHtml(ctaText)}</a>
+        </div>`;
+      const imgCol = `
+        <div class="service-img fade-up">
+          <img src="${imgSrc}" alt="${this.escapeHtml(svc.title || '')}" loading="lazy">
+        </div>`;
+
+      section.innerHTML = `
+        <div class="container">
+          <div class="grid-2" style="align-items:center;gap:3rem;">
+            ${index % 2 === 1 ? imgCol + textCol : textCol + imgCol}
+          </div>
+        </div>`;
+
+      return section;
     },
 
     // ---------- PACKAGES (dedicated page) ----------

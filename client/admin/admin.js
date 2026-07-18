@@ -52,15 +52,13 @@ const AdminApp = {
     formData.append('section', section);
     formData.append('item_id', String(itemId));
 
-    const auth = JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}');
-    const password = localStorage.getItem(this.DB_KEYS.password) || 'admin123';
-    formData.append('auth_token', btoa(auth.email + ':' + password));
-
     try {
       const resp = await fetch(this.BACKEND_HOST + '/api/upload-image', {
         method: 'POST',
+        headers: this.authHeaders(), // NOTE: don't set Content-Type here — fetch sets the multipart boundary itself for FormData bodies
         body: formData
       });
+      if (this.handleAuthResponse(resp)) return null;
       let result;
       try {
         result = await resp.json();
@@ -94,13 +92,15 @@ const AdminApp = {
     stats: 'ank_stats',
     settings: 'ank_settings',
     activity: 'ank_activity',
-    password: 'ank_admin_password'
+    mpesaOrders: 'ank_mpesa_orders'
   },
 
   BACKEND_HOST: 'https://ankhydro-ltd-production.up.railway.app',
   DB_API_BASE: 'https://ankhydro-ltd-production.up.railway.app/api/admin',
   SITE_DATA_API: 'https://ankhydro-ltd-production.up.railway.app/api/site-data',
+  MPESA_API_BASE: 'https://ankhydro-ltd-production.up.railway.app/api/mpesa',
   dbAvailable: false,
+  mpesaAvailable: false,
   data: {
     settings: {},
     stats: {},
@@ -113,7 +113,8 @@ const AdminApp = {
     testimonials: [],
     team: [],
     faq: [],
-    activity: []
+    activity: [],
+    mpesaOrders: []
   },
 
   currentSection: 'dashboard',
@@ -151,7 +152,7 @@ const AdminApp = {
   },
 
   // ---------- AUTH ----------
-  handleLogin() {
+  async handleLogin() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const errorEl = document.getElementById('loginError');
@@ -159,39 +160,52 @@ const AdminApp = {
     const btnText = btn?.querySelector('.login-btn-text');
     const btnLoading = btn?.querySelector('.login-btn-loading');
 
-    const storedPassword = localStorage.getItem(this.DB_KEYS.password) || 'admin123';
-
-    // Show loading state
     if (btnText) btnText.style.display = 'none';
     if (btnLoading) btnLoading.style.display = 'inline-flex';
     if (btn) btn.disabled = true;
     errorEl.style.display = 'none';
 
-    // Simulate brief auth delay for UX
-    setTimeout(() => {
-      if (email === 'admin@ankhydro.com' && password === storedPassword) {
-        localStorage.setItem(this.DB_KEYS.auth, JSON.stringify({
-          email,
-          loggedIn: true,
-          timestamp: Date.now()
-        }));
-        window.location.href = 'dashboard.html';
-      } else {
-        errorEl.textContent = 'Invalid email or password. Please try again.';
-        errorEl.style.display = 'block';
-        errorEl.style.background = '';
-        errorEl.style.color = '';
-        if (btnText) btnText.style.display = 'inline';
-        if (btnLoading) btnLoading.style.display = 'none';
-        if (btn) btn.disabled = false;
+    try {
+      const resp = await fetch(`${this.DB_API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      let result;
+      try {
+        result = await resp.json();
+      } catch (e) {
+        throw new Error(`Server returned a non-JSON response (status ${resp.status})`);
       }
-    }, 600);
+      if (!resp.ok || !result.success) {
+        throw new Error(result.error || 'Invalid email or password.');
+      }
+
+      localStorage.setItem(this.DB_KEYS.auth, JSON.stringify({
+        email: result.email,
+        token: result.token,
+        loggedIn: true,
+        timestamp: Date.now()
+      }));
+      window.location.href = 'dashboard.html';
+    } catch (error) {
+      errorEl.textContent = error.message || 'Could not reach the server. Please try again.';
+      errorEl.style.display = 'block';
+      errorEl.style.background = '';
+      errorEl.style.color = '';
+      if (btnText) btnText.style.display = 'inline';
+      if (btnLoading) btnLoading.style.display = 'none';
+      if (btn) btn.disabled = false;
+    }
   },
 
   isAuthenticated() {
     const auth = JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || 'null');
-    if (!auth || !auth.loggedIn) return false;
-    // Session timeout: 30 min
+    if (!auth || !auth.loggedIn || !auth.token) return false;
+    // Session timeout: 30 min of front-end inactivity. The token itself is
+    // also checked and expired server-side (12h) on every request, so a
+    // stolen/copied token can't be replayed forever even if this client-side
+    // check is bypassed.
     if (Date.now() - auth.timestamp > 30 * 60 * 1000) {
       localStorage.removeItem(this.DB_KEYS.auth);
       return false;
@@ -200,6 +214,31 @@ const AdminApp = {
     auth.timestamp = Date.now();
     localStorage.setItem(this.DB_KEYS.auth, JSON.stringify(auth));
     return true;
+  },
+
+  // Bearer token for the currently logged-in admin, or null if not logged in.
+  getToken() {
+    const auth = JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || 'null');
+    return auth?.token || null;
+  },
+
+  // Merges an Authorization header into a fetch options object.
+  authHeaders(extra = {}) {
+    const token = this.getToken();
+    return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+  },
+
+  // Call after any admin-API fetch response. If the server says the session
+  // is invalid/expired, force a fresh login instead of leaving the admin
+  // looking at a dashboard that will fail on every action.
+  handleAuthResponse(resp) {
+    if (resp && resp.status === 401) {
+      localStorage.removeItem(this.DB_KEYS.auth);
+      this.toast('Your session has expired. Please log in again.', 'error');
+      setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+      return true;
+    }
+    return false;
   },
 
   // ---------- ENSURE DATA STRUCTURE (no hardcoded content) ----------
@@ -251,7 +290,8 @@ const AdminApp = {
   // ---------- STORAGE HELPERS ----------
   async loadAdminData() {
     try {
-      const resp = await fetch(`${this.DB_API_BASE}/all`);
+      const resp = await fetch(`${this.DB_API_BASE}/all`, { headers: this.authHeaders() });
+      if (this.handleAuthResponse(resp)) return;
       if (!resp.ok) throw new Error('Admin API unavailable');
       const data = await resp.json();
       this.dbAvailable = true;
@@ -275,59 +315,26 @@ const AdminApp = {
       this.loadFromLocalStorage();
     }
   },
+
+  // M-Pesa orders live under their own router (mpesaRoutes.ts -> /api/mpesa),
+  // not the /api/admin bulk endpoint above, so they're fetched separately.
+  // Kept independent of `dbAvailable` so a hiccup in one doesn't hide the other.
   async loadMpesaOrders() {
-    const tbody = document.getElementById('mpesa-orders-tbody');
-    if (!tbody) return;
-
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading transactions...</td></tr>';
-
     try {
-        const response = await fetch('/api/mpesa/orders');
-        if (!response.ok) throw new Error('Failed to fetch M-Pesa data');
-        
-        const orders = await response.json();
-        
-        if (orders.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No transactions found.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = orders.map(order => {
-            // Setup a status badge style
-            let badgeClass = 'badge-pending';
-            if (order.status === 'paid') badgeClass = 'badge-success';
-            if (order.status === 'failed') badgeClass = 'badge-danger';
-
-            const date = new Date(order.created_at).toLocaleString();
-
-            return `
-                <tr>
-                    <td>#${order.id}</td>
-                    <td>
-                        <strong>${order.customer_name || 'N/A'}</strong><br>
-                        <small class="text-muted">${order.customer_email || ''}</small>
-                    </td>
-                    <td>${order.phone}</td>
-                    <td>
-                        <strong>${order.service || 'Direct Pay'}</strong><br>
-                        <small class="text-muted">${order.package_name || ''}</small>
-                    </td>
-                    <td><strong>${Number(order.amount).toLocaleString()}</strong></td>
-                    <td>
-                        <small>Ref: ${order.account_reference}</small><br>
-                        <strong>${order.receipt_number || '<span class="text-muted">—</span>'}</strong>
-                    </td>
-                    <td><span class="badge ${badgeClass}">${order.status.toUpperCase()}</span></td>
-                    <td><small>${date}</small></td>
-                </tr>
-            `;
-        }).join('');
-
+      const resp = await fetch(`${this.MPESA_API_BASE}/orders`, { headers: this.authHeaders() });
+      if (this.handleAuthResponse(resp)) return;
+      if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+      const data = await resp.json();
+      this.data.mpesaOrders = data.orders || [];
+      this.mpesaAvailable = true;
+      this.saveLocal('mpesaOrders', this.data.mpesaOrders); // cache for offline viewing
     } catch (error) {
-        console.error('M-Pesa load error:', error);
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:red;">Error loading transactions: ${error.message}</td></tr>`;
+      console.warn('M-Pesa orders unavailable, using cached copy if any.', error.message || error);
+      this.mpesaAvailable = false;
+      this.data.mpesaOrders = this.loadLocal('mpesaOrders');
     }
-},
+  },
+
   loadLocal(key) {
     try {
       const raw = localStorage.getItem(this.DB_KEYS[key]);
@@ -346,6 +353,9 @@ const AdminApp = {
   },
 
   load(key) {
+    if (key === 'mpesaOrders') {
+      return this.data.mpesaOrders || [];
+    }
     if (this.dbAvailable) {
       return this.data[key] || ((key === 'stats' || key === 'settings') ? {} : []);
     }
@@ -358,6 +368,11 @@ const AdminApp = {
   },
 
   async save(key, data) {
+    if (key === 'mpesaOrders') {
+      this.data.mpesaOrders = data;
+      this.saveLocal('mpesaOrders', data); // local cache only, for offline viewing
+      return true;
+    }
     if (this.dbAvailable) {
       this.data[key] = data;
       return await this.syncKey(key, data);
@@ -371,7 +386,7 @@ const AdminApp = {
   async syncKey(key, data) {
     if (!this.dbAvailable) return false;
     try {
-      const headers = { 'Content-Type': 'application/json' };
+      const headers = this.authHeaders({ 'Content-Type': 'application/json' });
       let resp;
       if (['services', 'packages', 'projects', 'blog', 'testimonials', 'team', 'faq'].includes(key)) {
         resp = await fetch(`${this.DB_API_BASE}/bulk`, {
@@ -395,6 +410,7 @@ const AdminApp = {
         return true; // key not DB-backed (e.g. activity handled separately)
       }
 
+      if (this.handleAuthResponse(resp)) return false;
       if (!resp.ok) {
         let detail = '';
         try { detail = (await resp.json()).error || ''; } catch (e) { /* non-JSON error body */ }
@@ -409,39 +425,26 @@ const AdminApp = {
   },
 
   async updateItem(type, id, patch) {
-    if (!this.dbAvailable) return false;
+    const isMpesa = type === 'mpesaOrders';
+    if (isMpesa ? !this.mpesaAvailable : !this.dbAvailable) return false;
+    const url = isMpesa ? `${this.MPESA_API_BASE}/orders/${id}` : `${this.DB_API_BASE}/${type}/${id}`;
     try {
-      const resp = await fetch(`${this.DB_API_BASE}/${type}/${id}`, {
+      const resp = await fetch(url, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(patch)
       });
-      if (!resp.ok) throw new Error(`Server responded ${resp.status}`);
+      if (this.handleAuthResponse(resp)) return false;
+      if (!resp.ok) {
+        let detail = '';
+        try { detail = (await resp.json()).error || ''; } catch (e) { /* non-JSON error body */ }
+        throw new Error(`Server responded ${resp.status}${detail ? ' — ' + detail : ''}`);
+      }
       return true;
     } catch (error) {
       console.error(`Failed to update ${type}/${id}`, error.message || error);
       this.toast(`Could not save changes to the database: ${error.message || error}`, 'error');
       return false;
-    }
-  },
-
-  async logActivity(action, icon = '📋') {
-    const entry = { text: action, icon, timestamp: Date.now() };
-    const activity = this.dbAvailable ? this.data.activity : this.load('activity');
-    activity.push(entry);
-    if (activity.length > 50) activity.splice(0, activity.length - 50);
-    this.saveLocal('activity', activity);
-
-    if (this.dbAvailable) {
-      try {
-        await fetch(`${this.DB_API_BASE}/activity`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, icon, user_email: JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}').email || null, metadata: null })
-        });
-      } catch (error) {
-        console.warn('Failed to write activity log to DB.', error.message || error);
-      }
     }
   },
 
@@ -478,7 +481,8 @@ const AdminApp = {
       dashboard: 'Dashboard', services: 'Services', packages: 'Packages',
       projects: 'Projects / Portfolio', blog: 'Blog Posts', quotes: 'Quote Requests',
       messages: 'Contact Messages', testimonials: 'Testimonials', team: 'Team Members',
-      faq: 'FAQ Management', stats: 'Stats / Counters', settings: 'Site Settings'
+      faq: 'FAQ Management', stats: 'Stats / Counters', settings: 'Site Settings',
+      mpesa: 'M-Pesa Orders'
     };
     document.getElementById('pageTitle').textContent = titles[section] || 'Dashboard';
 
@@ -524,22 +528,28 @@ const AdminApp = {
     const testimonials = this.load('testimonials');
     const team = this.load('team');
     const faq = this.load('faq');
+    const mpesaOrders = this.load('mpesaOrders');
 
     // Main stat numbers
     this.setText('dashQuotes', quotes.length);
     this.setText('dashMessages', messages.length);
     this.setText('dashBlog', blog.length);
     this.setText('dashProjects', projects.length);
+    this.setText('dashMpesa', mpesaOrders.length);
 
     // Trend badges
     const newQuotes = quotes.filter(q => q.status === 'New').length;
     const unreadMsgs = messages.filter(m => m.status === 'Unread').length;
+    const pendingOrders = mpesaOrders.filter(o => o.status === 'pending').length;
+    const paidOrders = mpesaOrders.filter(o => o.status === 'paid').length;
     this.setText('quotesTrend', `${newQuotes} new`);
     this.setText('messagesTrend', `${unreadMsgs} unread`);
+    this.setText('mpesaTrend', `${paidOrders} paid`);
 
     // Sidebar badges
     this.updateBadge('quotesBadge', newQuotes);
     this.updateBadge('messagesBadge', unreadMsgs);
+    this.updateBadge('mpesaBadge', pendingOrders);
 
     // Quick stats panel
     this.setText('qsServices', services.length);
@@ -553,6 +563,7 @@ const AdminApp = {
     this.renderMiniChart('messagesChart', this.generateChartData(messages.length));
     this.renderMiniChart('blogChart', this.generateChartData(blog.length));
     this.renderMiniChart('projectsChart', this.generateChartData(projects.length));
+    this.renderMiniChart('mpesaChart', this.generateChartData(mpesaOrders.length));
 
     // Activity feed
     const activity = this.load('activity').slice(-10).reverse();
@@ -617,6 +628,7 @@ const AdminApp = {
     this.renderTestimonials();
     this.renderTeam();
     this.renderFaq();
+    this.renderMpesaOrders();
     this.loadStats();
     this.loadSettings();
   },
@@ -801,6 +813,39 @@ const AdminApp = {
         <td class="actions">
           <button class="btn-admin btn-admin-sm btn-admin-outline" onclick="AdminApp.viewDetail('message', ${m.id})">View</button>
           <button class="btn-admin btn-admin-sm btn-admin-danger" onclick="AdminApp.deleteItem('messages', ${m.id})">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  },
+
+  renderMpesaOrders() {
+    const items = this.load('mpesaOrders');
+    const tbody = document.getElementById('mpesaTable');
+    const empty = document.getElementById('mpesaEmpty');
+    if (!tbody) return;
+    if (items.length === 0) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    tbody.innerHTML = items.map(o => `
+      <tr>
+        <td>${o.created_at ? new Date(o.created_at).toLocaleString() : '—'}</td>
+        <td><strong>${o.customer_name || 'N/A'}</strong>${o.customer_email ? `<br><span style="color:var(--gray-400);font-size:.8rem;">${o.customer_email}</span>` : ''}</td>
+        <td><a href="tel:${o.phone}">${o.phone}</a></td>
+        <td>${o.package_name || o.service || '—'}</td>
+        <td>${o.currency || 'KES'} ${Number(o.amount || 0).toLocaleString()}</td>
+        <td>${o.receipt_number || '—'}</td>
+        <td>
+          <select class="status-select" onchange="AdminApp.updateStatus('mpesaOrders', ${o.id}, this.value)">
+            ${['pending','paid','failed','cancelled'].map(s =>
+              `<option value="${s}" ${o.status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+            ).join('')}
+          </select>
+        </td>
+        <td class="actions">
+          <button class="btn-admin btn-admin-sm btn-admin-outline" onclick="AdminApp.viewDetail('mpesaOrder', ${o.id})">View</button>
         </td>
       </tr>
     `).join('');
@@ -1178,7 +1223,8 @@ const AdminApp = {
     await this.save(storeKey, items);
     if (this.dbAvailable) {
       try {
-        await fetch(`${this.DB_API_BASE}/${storeKey}/${id}`, { method: 'DELETE' });
+        const resp = await fetch(`${this.DB_API_BASE}/${storeKey}/${id}`, { method: 'DELETE', headers: this.authHeaders() });
+        this.handleAuthResponse(resp);
       } catch (error) {
         console.warn('Failed to delete item in DB.', error.message || error);
       }
@@ -1195,10 +1241,12 @@ const AdminApp = {
     if (item) {
       item.status = newStatus;
       await this.save(storeKey, items);
-      if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
+      if (storeKey === 'mpesaOrders') {
+        if (this.mpesaAvailable) await this.updateItem(storeKey, id, { status: newStatus });
+      } else if (this.dbAvailable && (storeKey === 'quotes' || storeKey === 'messages')) {
         await this.updateItem(storeKey, id, { status: newStatus });
       }
-      this.logActivity(`Updated ${storeKey} status to "${newStatus}" for ${item.name || item.title || 'item'}`, '🔄');
+      this.logActivity(`Updated ${storeKey} status to "${newStatus}" for ${item.name || item.customer_name || item.title || 'item'}`, '🔄');
       this.renderAll();
       this.renderDashboard();
     }
@@ -1206,7 +1254,7 @@ const AdminApp = {
 
   // ---------- DETAIL VIEW ----------
   async viewDetail(type, id) {
-    const storeKey = type === 'quote' ? 'quotes' : 'messages';
+    const storeKey = type === 'quote' ? 'quotes' : type === 'mpesaOrder' ? 'mpesaOrders' : 'messages';
     const items = this.load(storeKey);
     const item = items.find(i => i.id === id);
     if (!item) return;
@@ -1232,6 +1280,28 @@ const AdminApp = {
           <label style="font-weight:600;font-size:.85rem;display:block;margin-bottom:.35rem;">Internal Notes</label>
           <textarea id="detail-notes" placeholder="Add internal notes...">${item.notes || ''}</textarea>
           <button class="btn-admin btn-admin-sm btn-admin-primary" style="margin-top:.5rem;" onclick="AdminApp.saveNotes('quotes', ${id})">Save Notes</button>
+        </div>
+      `;
+    } else if (type === 'mpesaOrder') {
+      title.textContent = `M-Pesa Order #${item.id} — ${item.customer_name || 'N/A'}`;
+      body.innerHTML = `
+        <div class="detail-grid">
+          <div class="detail-item"><label>Customer</label><span>${item.customer_name || '—'}</span></div>
+          <div class="detail-item"><label>Phone</label><span><a href="tel:${item.phone}">${item.phone}</a></span></div>
+          <div class="detail-item"><label>Email</label><span>${item.customer_email ? `<a href="mailto:${item.customer_email}">${item.customer_email}</a>` : '—'}</span></div>
+          <div class="detail-item"><label>Service / Package</label><span>${item.package_name || item.service || '—'}</span></div>
+          <div class="detail-item"><label>Amount</label><span>${item.currency || 'KES'} ${Number(item.amount || 0).toLocaleString()}</span></div>
+          <div class="detail-item"><label>Status</label><span>${item.status}</span></div>
+          <div class="detail-item"><label>Account Reference</label><span>${item.account_reference || '—'}</span></div>
+          <div class="detail-item"><label>Transaction Desc.</label><span>${item.transaction_desc || '—'}</span></div>
+          <div class="detail-item"><label>M-Pesa Receipt No.</label><span>${item.receipt_number || '—'}</span></div>
+          <div class="detail-item"><label>Transaction ID</label><span>${item.transaction_id || '—'}</span></div>
+          <div class="detail-item"><label>Checkout Request ID</label><span style="font-size:.75rem;word-break:break-all;">${item.checkout_request_id || '—'}</span></div>
+          <div class="detail-item"><label>Merchant Request ID</label><span style="font-size:.75rem;word-break:break-all;">${item.merchant_request_id || '—'}</span></div>
+          <div class="detail-item"><label>Result Code / Desc.</label><span>${item.result_code ?? '—'} ${item.result_desc ? '— ' + item.result_desc : ''}</span></div>
+          <div class="detail-item"><label>Created</label><span>${item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</span></div>
+          <div class="detail-item"><label>Paid At</label><span>${item.paid_at ? new Date(item.paid_at).toLocaleString() : '—'}</span></div>
+          <div class="detail-item detail-full"><label>Delivery Address</label><span>${item.delivery_address || '—'}</span></div>
         </div>
       `;
     } else {
@@ -1321,15 +1391,29 @@ const AdminApp = {
       this.toast('Settings saved!', 'success');
     });
 
-    document.getElementById('changePasswordBtn')?.addEventListener('click', () => {
+    document.getElementById('changePasswordBtn')?.addEventListener('click', async () => {
       const newPw = document.getElementById('newPassword')?.value;
       const confirmPw = document.getElementById('confirmPassword')?.value;
       if (!newPw || newPw.length < 6) return this.toast('Password must be at least 6 characters.', 'error');
       if (newPw !== confirmPw) return this.toast('Passwords do not match.', 'error');
-      localStorage.setItem(this.DB_KEYS.password, newPw);
-      document.getElementById('newPassword').value = '';
-      document.getElementById('confirmPassword').value = '';
-      this.toast('Password updated!', 'success');
+      if (!this.dbAvailable) return this.toast('Cannot change password — not connected to the database.', 'error');
+      try {
+        const resp = await fetch(`${this.DB_API_BASE}/change-password`, {
+          method: 'PUT',
+          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ newPassword: newPw })
+        });
+        if (this.handleAuthResponse(resp)) return;
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || !result.success) {
+          throw new Error(result.error || `Server responded ${resp.status}`);
+        }
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+        this.toast('Password updated!', 'success');
+      } catch (error) {
+        this.toast(`Could not change password: ${error.message || error}`, 'error');
+      }
     });
   },
 
@@ -1378,11 +1462,12 @@ const AdminApp = {
 
     if (this.dbAvailable) {
       try {
-        await fetch(`${this.DB_API_BASE}/activity`, {
+        const resp = await fetch(`${this.DB_API_BASE}/activity`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ action: text, icon, user_email: JSON.parse(localStorage.getItem(this.DB_KEYS.auth) || '{}').email || null, metadata: null })
         });
+        this.handleAuthResponse(resp);
       } catch (error) {
         console.warn('Failed to write activity log to DB.', error.message || error);
       }
@@ -1443,7 +1528,7 @@ const AdminApp = {
       const endpoint = this.BACKEND_HOST + '/api/site-data/publish';
       const resp = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: this.authHeaders({ 'Content-Type': 'application/json' })
       });
       const result = await resp.json();
 

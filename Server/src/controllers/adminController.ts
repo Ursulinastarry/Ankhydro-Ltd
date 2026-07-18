@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { pool, queryOne, queryRows } from '../db.js';
 
@@ -7,6 +8,147 @@ type AdminPayload = {
   type?: string;
   items?: any[];
 };
+
+// ---------------------------------------------------------------------
+// AUTH
+//
+// Backed by the `admin` table (see admin_auth_schema.sql): email + a
+// bcrypt password hash, checked via Postgres's pgcrypto crypt(). On
+// success we hand back a signed, expiring token (HMAC-SHA256 over a JSON
+// payload — no extra npm dependency needed). Every other handler in this
+// file calls requireAuth() as its first line and bails out with 401 if
+// the token is missing, malformed, tampered with, or expired.
+//
+// Set ADMIN_TOKEN_SECRET in your environment in production. The fallback
+// below only exists so local dev doesn't crash if it's unset — it is NOT
+// safe to run production traffic on the fallback secret.
+// ---------------------------------------------------------------------
+
+const TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || 'dev-only-insecure-secret-set-ADMIN_TOKEN_SECRET-env-var';
+if (!process.env.ADMIN_TOKEN_SECRET) {
+  console.warn('[auth] ADMIN_TOKEN_SECRET is not set — using an insecure development fallback. Set this env var in production.');
+}
+const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+// Manual base64url helpers built on plain 'base64' (supported by every
+// @types/node version) instead of passing the 'base64url' encoding string
+// directly to Buffer/Hmac methods, which only newer @types/node versions
+// recognize and otherwise fails to compile with a BufferEncoding type error.
+function toBase64Url(input: Buffer | string): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function fromBase64Url(input: string): Buffer {
+  const restored = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padLength = (4 - (restored.length % 4)) % 4;
+  return Buffer.from(restored + '='.repeat(padLength), 'base64');
+}
+
+function signToken(email: string): string {
+  const payload = JSON.stringify({ email, exp: Date.now() + TOKEN_TTL_MS });
+  const payloadB64 = toBase64Url(payload);
+  const sigBuf = crypto.createHmac('sha256', TOKEN_SECRET).update(payloadB64).digest();
+  return `${payloadB64}.${toBase64Url(sigBuf)}`;
+}
+
+function verifyToken(token: string): { email: string } | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, sig] = parts;
+
+  const expectedSigBuf = crypto.createHmac('sha256', TOKEN_SECRET).update(payloadB64).digest();
+  const sigBuf = fromBase64Url(sig);
+  if (sigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+    return null; // signature doesn't match — token was forged or corrupted
+  }
+
+  try {
+    const payload = JSON.parse(fromBase64Url(payloadB64).toString('utf8'));
+    if (!payload.exp || Date.now() > payload.exp) return null; // expired
+    if (!payload.email) return null;
+    return { email: payload.email };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Call as the first line of any protected handler:
+ *   if (!requireAuth(req, res)) return;
+ * Sends the 401 response itself on failure, so callers just need to return.
+ */
+export function requireAuth(req: Request, res: Response): boolean {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required.' });
+    return false;
+  }
+
+  const verified = verifyToken(token);
+  if (!verified) {
+    res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+    return false;
+  }
+
+  (req as any).adminEmail = verified.email;
+  return true;
+}
+
+export async function adminLogin(req: Request, res: Response) {
+  const { email, password } = req.body as Record<string, any>;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    // crypt($2, password) re-hashes the submitted password with the same
+    // salt that's embedded in the stored hash, so this comparison never
+    // sees or needs the plaintext password stored anywhere.
+    const admin = await queryOne(
+      `SELECT id, email FROM admin WHERE email = $1 AND password = crypt($2, password)`,
+      [email, password]
+    );
+
+    if (!admin) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const token = signToken(admin.email);
+    res.json({ success: true, token, email: admin.email });
+  } catch (error: any) {
+    console.error('Admin login failed:', error.message || error);
+    res.status(500).json({ error: 'Login failed.' });
+  }
+}
+
+export async function adminChangePassword(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
+  const { newPassword } = req.body as Record<string, any>;
+  const email = (req as any).adminEmail as string; // set by requireAuth from the verified token — you can only ever change your own password this way
+
+  if (!newPassword || String(newPassword).length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE admin SET password = crypt($1, gen_salt('bf')), updated_at = now() WHERE email = $2`,
+      [newPassword, email]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Change password failed:', error.message || error);
+    res.status(500).json({ error: 'Failed to change password.' });
+  }
+}
 
 function getAdminTable(type?: string) {
   const map: Record<string, string> = {
@@ -122,7 +264,9 @@ function formatBulkPayload(type: string, rows: any[]) {
   }
 }
 
-export async function getAdminAll(_req: Request, res: Response) {
+export async function getAdminAll(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   try {
     const [settingsRow, statsRow, services, packages, testimonials, team, faq, projects, blog, quotes, messages, activity] = await Promise.all([
       queryOne('SELECT * FROM site_settings ORDER BY updated_at DESC LIMIT 1'),
@@ -160,6 +304,8 @@ export async function getAdminAll(_req: Request, res: Response) {
 }
 
 export async function bulkSave(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const { type, items } = req.body as AdminPayload;
   const table = getAdminTable(type);
 
@@ -241,6 +387,8 @@ export async function bulkSave(req: Request, res: Response) {
 }
 
 export async function saveSettings(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const settings = req.body as Record<string, any>;
 
   try {
@@ -264,6 +412,8 @@ export async function saveSettings(req: Request, res: Response) {
 }
 
 export async function saveStats(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const stats = req.body as Record<string, any>;
 
   try {
@@ -287,6 +437,8 @@ export async function saveStats(req: Request, res: Response) {
 }
 
 export async function logActivity(req: Request, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const { action, icon, user_email, metadata } = req.body as Record<string, any>;
 
   try {
@@ -302,6 +454,8 @@ export async function logActivity(req: Request, res: Response) {
 }
 
 export async function patchItem(req: Request<{ type: string; id: string }>, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const typeParam = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
   const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const type = typeParam;
@@ -340,6 +494,8 @@ export async function patchItem(req: Request<{ type: string; id: string }>, res:
 }
 
 export async function deleteItem(req: Request<{ type: string; id: string }>, res: Response) {
+  if (!requireAuth(req, res)) return;
+
   const type = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
   const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = Number(idParam);

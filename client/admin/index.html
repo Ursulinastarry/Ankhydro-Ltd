@@ -43,9 +43,7 @@
           </span>
         </button>
       </form>
-      <div class="login-divider"><span>or</span></div>
-      <button class="btn-admin btn-admin-outline login-reset-btn" id="resetBtn" style="width:100%;">Reset to Default Password</button>
-      <p class="login-footer">Default: <strong>admin@ankhydro.com</strong> / <strong>admin123</strong></p>
+      <p class="login-footer" style="margin-top:1.5rem;">Contact your system administrator if you've forgotten your credentials.</p>
     </div>
   </div>
   <script src="admin.js"></script>
@@ -57,17 +55,6 @@
       pw.type = isPassword ? 'text' : 'password';
       this.querySelector('.eye-open').style.display = isPassword ? 'none' : 'block';
       this.querySelector('.eye-closed').style.display = isPassword ? 'block' : 'none';
-    });
-
-    // Reset password
-    document.getElementById('resetBtn')?.addEventListener('click', function() {
-      localStorage.removeItem('ank_admin_password');
-      localStorage.removeItem('ank_admin_auth');
-      const err = document.getElementById('loginError');
-      err.textContent = 'Password reset to default: admin123';
-      err.style.display = 'block';
-      err.style.background = '#E8F5E9';
-      err.style.color = '#4CAF50';
     });
   </script>
 </body>

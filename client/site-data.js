@@ -57,15 +57,17 @@
 
       if (!this.data) return;
 
-      this.initCart();
+      // NOTE: cart drawer + packages rendering are owned exclusively by
+      // packages-cart.js (it talks to the live API and handles checkout).
+      // Do NOT call this.initCart() here — running two cart implementations
+      // against the same 'ank_cart' localStorage key is what caused the
+      // cart to appear open on load and duplicate "Add to cart" buttons.
 
       // Run each apply method independently — one failure won't break the rest
       const methods = [
         'applySettings',
         'applyStats',
         'applyServices',
-        'applyPackages',
-        'applyPackagesHome',
         'applyBlog',
         'applyBlogHome',
         'applyTestimonials',
@@ -966,4 +968,3 @@
     SiteData.init();
   }
 })();
-

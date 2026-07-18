@@ -150,7 +150,7 @@
           id: pkg.id,
           name: pkg.name,
           price: pkg.price || 0,
-          priceLabel: pkg.priceLabel || '',
+          price_label: pkg.price_label || '',
           service: this.getServiceName(pkg.service_id) || pkg.category || '',
           quantity: 1
         });
@@ -476,7 +476,7 @@
 
       const published = services
         .filter(s => s.status === 'published')
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (published.length === 0) return;
 
@@ -702,7 +702,7 @@
 
       const active = packages
         .filter(p => p.status === 'active')
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (active.length === 0) return;
 
@@ -808,7 +808,7 @@
 
       const featured = packages
         .filter(p => p.status === 'active' && p.featured)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (featured.length === 0) return;
 
@@ -880,7 +880,7 @@
           <div class="blog-body">
             <p class="blog-category">${this.escapeHtml(post.category || 'General')}</p>
             <h3>${this.escapeHtml(post.title)}</h3>
-            <p>${this.escapeHtml((post.content || '').substring(0, 150))}${(post.content || '').length > 150 ? '...' : ''}</p>
+            <p>${this.escapeHtml(post.excerpt || (post.content || '').substring(0, 150) + ((post.content || '').length > 150 ? '...' : ''))}</p>
             <p class="blog-meta">${post.date || ''} &middot; ${this.escapeHtml(post.author || 'ANK Hydro')}</p>
           </div>
         `;
@@ -928,7 +928,7 @@
           <div class="blog-body">
             <p class="blog-category">${this.escapeHtml(post.category || 'General')}</p>
             <h3>${this.escapeHtml(post.title)}</h3>
-            <p>${this.escapeHtml((post.content || '').substring(0, 150))}${(post.content || '').length > 150 ? '...' : ''}</p>
+            <p>${this.escapeHtml(post.excerpt || (post.content || '').substring(0, 150) + ((post.content || '').length > 150 ? '...' : ''))}</p>
             <p class="blog-meta">${post.date || ''} &middot; ${this.escapeHtml(post.author || 'ANK Hydro')}</p>
           </div>
         `;
@@ -943,7 +943,7 @@
 
       const published = testimonials
         .filter(t => t.status === 'published')
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (published.length === 0) return;
 
@@ -986,7 +986,7 @@
 
       const active = team
         .filter(t => t.status === 'active')
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (active.length === 0) return;
 
@@ -1021,7 +1021,7 @@
 
       const published = faq
         .filter(f => f.status === 'published')
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
       if (published.length === 0) return;
 

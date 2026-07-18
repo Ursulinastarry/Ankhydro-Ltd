@@ -196,82 +196,50 @@ const AdminApp = {
     return true;
   },
 
-  // ---------- SEED DEFAULT DATA ----------
+  // ---------- ENSURE DATA STRUCTURE (no hardcoded content) ----------
+  // All real content now comes exclusively from the database via loadAdminData().
+  // This only guarantees the localStorage keys exist as empty structures so the
+  // admin UI doesn't throw on first run if the API is temporarily unreachable —
+  // it never injects sample company text, prices, or images.
   async seedDefaultData() {
     if (this.dbAvailable) {
+      this.showDbBanner(false);
       return;
     }
 
-    if (!localStorage.getItem(this.DB_KEYS.services)) {
-      this.save('services', [
-        { id: 1, title: 'Solar Panel Sales & Installation', slug: 'solar-installation', category: 'Solar Energy', description: 'Professional solar system design, installation, and commissioning.', status: 'published', order: 1 },
-        { id: 2, title: 'Hybrid Domestic Solar System', slug: 'hybrid-solar', category: 'Solar Energy', description: '5.12 kWh battery package with 550W panels and 3000W inverter.', status: 'published', order: 2 },
-        { id: 3, title: 'Hydrological Survey Services', slug: 'hydrological-survey', category: 'Water/Borehole', description: 'Geophysical surveys to locate underground water before drilling.', status: 'published', order: 3 },
-        { id: 4, title: 'Borehole Drilling Services', slug: 'borehole-drilling', category: 'Water/Borehole', description: 'Professional drilling, casing, development, and test pumping.', status: 'published', order: 4 },
-        { id: 5, title: 'Borehole Rehabilitation & Equipping', slug: 'borehole-rehabilitation', category: 'Water/Borehole', description: 'Restoration and upgrade of existing boreholes.', status: 'published', order: 5 },
-        { id: 6, title: 'Submersible Pump Sales & Installation', slug: 'pump-installation', category: 'Pumps', description: 'Electric and solar pump installation with correct sizing.', status: 'published', order: 6 },
-        { id: 7, title: 'Drip & Overhead Irrigation', slug: 'irrigation', category: 'Irrigation', description: 'Farm irrigation systems with efficient water use.', status: 'published', order: 7 },
-        { id: 8, title: 'Tank Tower Construction', slug: 'tank-tower', category: 'Infrastructure', description: 'Steel tower construction for water storage tanks.', status: 'published', order: 8 },
-        { id: 9, title: 'Solar Structure Construction', slug: 'solar-structure', category: 'Infrastructure', description: 'Ground-mount and custom solar panel structures.', status: 'published', order: 9 }
-      ]);
-    }
+    this.showDbBanner(true);
 
-    if (!localStorage.getItem(this.DB_KEYS.packages)) {
-      this.save('packages', [
-        { id: 1, name: 'Hybrid Domestic Solar Package', price: 0, priceLabel: 'Call us to enquire', category: 'Solar', specs: '5.12 kWh Lithium Battery, 550W Panels, 3000ES kW Inverter, DC Disconnect, Changeover Switch', status: 'active', featured: true, order: 1 },
-        { id: 2, name: 'Solar Pump 200W', price: 0, priceLabel: 'Call us to enquire', category: 'Pumps', specs: '200W Pump, Controller, 340W Panels, 50M HDPE Pipe, Cables, Transport', status: 'active', featured: false, order: 2 },
-        { id: 3, name: 'Solar Pump 500W', price: 0, priceLabel: 'Call us to enquire', category: 'Pumps', specs: '500W Pump, Controller, 340W Panels, 50M HDPE Pipe, Cables, Transport', status: 'active', featured: false, order: 3 },
-        { id: 4, name: 'Solar Pump 750W', price: 0, priceLabel: 'Call us to enquire', category: 'Pumps', specs: '750W Pump, Controller, 340W Panels, 50M HDPE Pipe, Cables, Transport', status: 'active', featured: false, order: 4 },
-        { id: 5, name: 'Solar Pump 1300W', price: 0, priceLabel: 'Call us to enquire', category: 'Pumps', specs: '1300W Pump, Controller, 340W Panels, 50M HDPE Pipe, Cables, Transport', status: 'active', featured: true, order: 5 }
-      ]);
-    }
-
-    if (!localStorage.getItem(this.DB_KEYS.testimonials)) {
-      this.save('testimonials', [
-        { id: 1, client: 'John M.', location: 'Kitui County', service: 'Borehole Drilling', text: 'ANK Hydro drilled our borehole and the water yield exceeded expectations. Professional team and great follow-up support.', rating: 5, status: 'published', order: 1 },
-        { id: 2, client: 'Mary W.', location: 'Machakos County', service: 'Hybrid Solar', text: 'The hybrid solar system has completely changed our electricity situation. No more blackouts and our bills have dropped significantly.', rating: 5, status: 'published', order: 2 },
-        { id: 3, client: 'Peter K.', location: 'Makueni County', service: 'Pump & Irrigation', text: 'They installed a solar-powered pump and set up drip irrigation. Our water costs dropped to zero and crop yield has improved.', rating: 5, status: 'published', order: 3 }
-      ]);
-    }
-
-    if (!localStorage.getItem(this.DB_KEYS.team)) {
-      this.save('team', [
-        { id: 1, name: 'Technical Director', role: 'Solar & Water Systems', bio: 'Leading our technical team with years of experience in solar installation and borehole drilling.', status: 'active', order: 1 },
-        { id: 2, name: 'Operations Manager', role: 'Project Delivery', bio: 'Ensuring every project is delivered on time, on budget, and to the highest quality.', status: 'active', order: 2 },
-        { id: 3, name: 'Field Engineers', role: 'Installation & Maintenance', bio: 'Certified technicians handling installations, testing, and after-sales support.', status: 'active', order: 3 }
-      ]);
-    }
-
-    if (!localStorage.getItem(this.DB_KEYS.faq)) {
-      this.save('faq', [
-        { id: 1, question: 'How much does it cost to drill a borehole in Kenya?', answer: 'Costs vary depending on depth, geological conditions, and location. Contact us for a free assessment and quote.', category: 'Borehole & Water', status: 'published', order: 1 },
-        { id: 2, question: 'What does the Hybrid Domestic Solar Package include?', answer: '5.12 kWh battery, 550W panels, 3000ES kW inverter, DC disconnect, changeover switch. Call us for current pricing.', category: 'Solar Energy', status: 'published', order: 2 },
-        { id: 3, question: 'Do you offer after-sales support?', answer: 'Yes, we provide 24/7 availability for breakdowns, servicing, and maintenance.', category: 'General', status: 'published', order: 3 }
-      ]);
-    }
+    const emptyListKeys = ['services', 'packages', 'testimonials', 'team', 'faq', 'quotes', 'messages', 'projects', 'blog', 'activity'];
+    emptyListKeys.forEach((key) => {
+      if (!localStorage.getItem(this.DB_KEYS[key])) this.saveLocal(key, []);
+    });
 
     if (!localStorage.getItem(this.DB_KEYS.stats)) {
-      this.save('stats', { boreholes: 150, solar: 200, clients: 500, counties: 15 });
+      this.saveLocal('stats', { boreholes: 0, solar: 0, clients: 0, counties: 0 });
     }
-
     if (!localStorage.getItem(this.DB_KEYS.settings)) {
-      this.save('settings', {
-        company: 'ANK HYDRO LIMITED',
-        tagline: 'Power of technology, get it right for better tomorrow',
-        phone: '+254 758 849 293',
-        email: 'info@ankhydro.com',
-        whatsapp: '+254 758 849 293',
-        address: 'Kitui Town, PT Plaza, Room 4, Ground Floor',
-        hours: 'Mon–Fri: 8AM–5PM, Sat: 8AM–1PM',
+      this.saveLocal('settings', {
+        company: '', tagline: '', phone: '', email: '', whatsapp: '', address: '', hours: '',
         facebook: '', instagram: '', tiktok: '', linkedin: '', youtube: '', twitter: '', ga: ''
       });
     }
+  },
 
-    if (!localStorage.getItem(this.DB_KEYS.quotes)) this.save('quotes', []);
-    if (!localStorage.getItem(this.DB_KEYS.messages)) this.save('messages', []);
-    if (!localStorage.getItem(this.DB_KEYS.projects)) this.save('projects', []);
-    if (!localStorage.getItem(this.DB_KEYS.blog)) this.save('blog', []);
-    if (!localStorage.getItem(this.DB_KEYS.activity)) this.save('activity', []);
+  // Shows a persistent banner telling the admin the DB API could not be reached,
+  // so they know any data on screen is empty/local rather than live content.
+  showDbBanner(show) {
+    let banner = document.getElementById('dbStatusBanner');
+    if (show) {
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'dbStatusBanner';
+        banner.style.cssText = 'background:#FFEBEE;color:#C62828;padding:.75rem 1.25rem;text-align:center;font-weight:600;font-size:.9rem;';
+        banner.textContent = 'Could not connect to the database. Changes made here will not be saved until the connection is restored.';
+        document.body.prepend(banner);
+      }
+    } else if (banner) {
+      banner.remove();
+    }
   },
 
   // ---------- STORAGE HELPERS ----------
@@ -593,7 +561,7 @@ const AdminApp = {
     const services = this.load('services');
     const options = ['<option value="">Select service (optional)</option>'];
     services
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
       .forEach((service) => {
         const value = String(service.id);
         const selected = selectedId && String(selectedId) === value ? ' selected' : '';
@@ -603,12 +571,12 @@ const AdminApp = {
   },
 
   renderServices() {
-    const items = this.load('services').sort((a, b) => a.order - b.order);
+    const items = this.load('services').sort((a, b) => a.display_order - b.display_order);
     const tbody = document.getElementById('servicesTable');
     if (!tbody) return;
     tbody.innerHTML = items.map(s => `
       <tr>
-        <td>${s.order}</td>
+        <td>${s.display_order}</td>
         <td style="display:flex;align-items:center;gap:.5rem;">${this.imgThumb(s.image)} <strong>${s.title}</strong></td>
         <td>${s.category}</td>
         <td><span class="status status-${s.status}">${s.status}</span></td>
@@ -621,13 +589,13 @@ const AdminApp = {
   },
 
   renderPackages() {
-    const items = this.load('packages').sort((a, b) => a.order - b.order);
+    const items = this.load('packages').sort((a, b) => a.display_order - b.display_order);
     const tbody = document.getElementById('packagesTable');
     if (!tbody) return;
     tbody.innerHTML = items.map(p => `
       <tr>
         <td style="display:flex;align-items:center;gap:.5rem;">${this.imgThumb(p.image)} <strong>${p.name}</strong></td>
-        <td>${p.priceLabel}</td>
+        <td>${p.price_label}</td>
         <td>${this.getServiceName(p.service_id) || p.category || '—'}</td>
         <td><span class="status status-${p.status}">${p.status}</span></td>
         <td>${p.featured ? '⭐' : '—'}</td>
@@ -751,7 +719,7 @@ const AdminApp = {
   },
 
   renderTestimonials() {
-    const items = this.load('testimonials').sort((a, b) => a.order - b.order);
+    const items = this.load('testimonials').sort((a, b) => a.display_order - b.display_order);
     const tbody = document.getElementById('testimonialsTable');
     if (!tbody) return;
     tbody.innerHTML = items.map(t => `
@@ -770,7 +738,7 @@ const AdminApp = {
   },
 
   renderTeam() {
-    const items = this.load('team').sort((a, b) => a.order - b.order);
+    const items = this.load('team').sort((a, b) => a.display_order - b.display_order);
     const tbody = document.getElementById('teamTable');
     if (!tbody) return;
     tbody.innerHTML = items.map(t => `
@@ -787,12 +755,12 @@ const AdminApp = {
   },
 
   renderFaq() {
-    const items = this.load('faq').sort((a, b) => a.order - b.order);
+    const items = this.load('faq').sort((a, b) => a.display_order - b.display_order);
     const tbody = document.getElementById('faqTable');
     if (!tbody) return;
     tbody.innerHTML = items.map(f => `
       <tr>
-        <td>${f.order}</td>
+        <td>${f.display_order}</td>
         <td><strong>${f.question}</strong></td>
         <td>${f.category}</td>
         <td><span class="status status-${f.status}">${f.status}</span></td>
@@ -819,9 +787,10 @@ const AdminApp = {
     const forms = {
       service: () => `
         <div class="form-group"><label>Service Title</label><input type="text" id="m-title" value="${item?.title || ''}" /></div>
+        <div class="form-group"><label>URL Slug</label><input type="text" id="m-slug" value="${item?.slug || ''}" placeholder="auto-generated from title if left blank" /></div>
         <div class="form-row">
           <div class="form-group"><label>Category</label><select id="m-category"><option>Solar Energy</option><option>Water/Borehole</option><option>Pumps</option><option>Irrigation</option><option>Infrastructure</option></select></div>
-          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
+          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
         </div>
         <div class="form-group"><label>Short Description</label><textarea id="m-description">${item?.description || ''}</textarea></div>
         ${this.imageFieldHtml('Service Image', 'm-image', item?.image)}
@@ -831,14 +800,14 @@ const AdminApp = {
         <div class="form-group"><label>Package Name</label><input type="text" id="m-name" value="${item?.name || ''}" /></div>
         <div class="form-row">
           <div class="form-group"><label>Price (KES)</label><input type="number" id="m-price" value="${item?.price || ''}" /></div>
-          <div class="form-group"><label>Price Label</label><input type="text" id="m-priceLabel" value="${item?.priceLabel || ''}" placeholder="Call us to enquire" /></div>
+          <div class="form-group"><label>Price Label</label><input type="text" id="m-price_label" value="${item?.price_label || ''}" placeholder="Call us to enquire" /></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Category</label><select id="m-category"><option>Solar</option><option>Pumps</option><option>Irrigation</option><option>Infrastructure</option></select></div>
           <div class="form-group"><label>Service</label><select id="m-service-id">${this.serviceOptionsHtml(item?.service_id)}</select></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
+          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
         </div>
         <div class="form-group"><label>Specifications (comma-separated)</label><textarea id="m-specs">${item?.specs || ''}</textarea></div>
         ${this.imageFieldHtml('Package Image', 'm-image', item?.image)}
@@ -860,16 +829,19 @@ const AdminApp = {
           <div class="form-group"><label>Date Completed</label><input type="date" id="m-date" value="${item?.date || ''}" /></div>
           <div class="form-group"><label>Status</label><select id="m-status"><option>published</option><option>draft</option></select></div>
         </div>
+        <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
         <div class="form-group"><label>Client Name</label><input type="text" id="m-client" value="${item?.client || ''}" /></div>
         <div class="form-group"><label>Client Testimonial</label><textarea id="m-testimonial">${item?.testimonial || ''}</textarea></div>
       `,
       blog: () => `
         <div class="form-group"><label>Post Title</label><input type="text" id="m-title" value="${item?.title || ''}" /></div>
+        <div class="form-group"><label>URL Slug</label><input type="text" id="m-slug" value="${item?.slug || ''}" placeholder="auto-generated from title if left blank" /></div>
         <div class="form-row">
           <div class="form-group"><label>Category</label><select id="m-category"><option>Solar Energy Guide</option><option>Borehole Drilling Tips</option><option>Irrigation & Farming</option><option>Water Conservation</option><option>Company News</option><option>Product Reviews</option></select></div>
           <div class="form-group"><label>Author</label><input type="text" id="m-author" value="${item?.author || 'Admin'}" /></div>
         </div>
         ${this.imageFieldHtml('Featured Image', 'm-image', item?.image)}
+        <div class="form-group"><label>Excerpt / Summary</label><textarea id="m-excerpt">${item?.excerpt || ''}</textarea></div>
         <div class="form-group"><label>Content</label><textarea id="m-content" style="min-height:200px;">${item?.content || ''}</textarea></div>
         <div class="form-row">
           <div class="form-group"><label>Date</label><input type="date" id="m-date" value="${item?.date || new Date().toISOString().split('T')[0]}" /></div>
@@ -889,7 +861,7 @@ const AdminApp = {
         <div class="form-group"><label>Testimonial Text</label><textarea id="m-text">${item?.text || ''}</textarea></div>
         ${this.imageFieldHtml('Client Photo', 'm-image', item?.image)}
         <div class="form-row">
-          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
+          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
           <div class="form-group"><label>Status</label><select id="m-status"><option>published</option><option>draft</option></select></div>
         </div>
       `,
@@ -901,7 +873,7 @@ const AdminApp = {
         <div class="form-group"><label>Bio</label><textarea id="m-bio">${item?.bio || ''}</textarea></div>
         ${this.imageFieldHtml('Profile Photo', 'm-image', item?.image)}
         <div class="form-row">
-          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
+          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
           <div class="form-group"><label>Status</label><select id="m-status"><option>active</option><option>inactive</option></select></div>
         </div>
       `,
@@ -910,7 +882,7 @@ const AdminApp = {
         <div class="form-group"><label>Answer</label><textarea id="m-answer" style="min-height:150px;">${item?.answer || ''}</textarea></div>
         <div class="form-row">
           <div class="form-group"><label>Category</label><select id="m-category"><option>Borehole & Water</option><option>Solar Energy</option><option>Pumps & Irrigation</option><option>General</option></select></div>
-          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.order || ''}" /></div>
+          <div class="form-group"><label>Display Order</label><input type="number" id="m-order" value="${item?.display_order || ''}" /></div>
         </div>
         <div class="form-group"><label>Status</label><select id="m-status"><option>published</option><option>draft</option></select></div>
       `
@@ -973,32 +945,36 @@ const AdminApp = {
 
     // Populate fields based on type
     switch (type) {
-      case 'service':
+      case 'service': {
         item.title = val('m-title');
-        if (!this.editingId) {
-          // Only derive a slug when creating a new service. Regenerating it
-          // on every edit — even ones that don't touch the title — silently
-          // rewrites the slug to a value that no longer matches the
-          // hand-picked <section id="..."> anchors in services.html, which
-          // makes the service vanish from the public site even though the
-          // DB save itself succeeds.
+        const manualSlug = val('m-slug');
+        if (manualSlug) {
+          item.slug = manualSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        } else if (!this.editingId) {
+          // Only auto-derive a slug when creating a new service and none was
+          // typed in. Regenerating it on every edit — even ones that don't
+          // touch the title — silently rewrites the slug to a value that no
+          // longer matches the hand-picked <section id="..."> anchors in
+          // services.html, which makes the service vanish from the public
+          // site even though the DB save itself succeeds.
           item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
         }
         item.category = val('m-category');
         item.description = val('m-description');
         item.status = val('m-status');
-        item.order = parseInt(val('m-order')) || item.order || items.length;
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         break;
+      }
       case 'package':
         item.name = val('m-name');
         item.price = parseInt(val('m-price')) || 0;
-        item.priceLabel = val('m-priceLabel');
+        item.price_label = val('m-price_label');
         item.category = val('m-category');
         item.service_id = parseInt(val('m-service-id')) || null;
         item.specs = val('m-specs');
         item.status = val('m-status');
         item.featured = val('m-featured') === 'true';
-        item.order = parseInt(val('m-order')) || item.order || items.length;
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         break;
       case 'project':
         item.title = val('m-title');
@@ -1007,24 +983,30 @@ const AdminApp = {
         item.description = val('m-description');
         item.date = val('m-date');
         item.status = val('m-status');
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         item.client = val('m-client');
         item.testimonial = val('m-testimonial');
         break;
-      case 'blog':
+      case 'blog': {
         item.title = val('m-title');
-        if (!this.editingId) {
-          // Same reasoning as services: don't regenerate the slug on edit,
-          // or previously shared/bookmarked blog-post.html?slug=... links
-          // break every time the post is updated.
+        const manualSlug = val('m-slug');
+        if (manualSlug) {
+          item.slug = manualSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        } else if (!this.editingId) {
+          // Same reasoning as services: don't auto-regenerate the slug on
+          // edit, or previously shared/bookmarked blog-post.html?slug=...
+          // links break every time the post is updated.
           item.slug = item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
         }
         item.category = val('m-category');
         item.author = val('m-author');
+        item.excerpt = val('m-excerpt');
         item.content = val('m-content');
         item.date = val('m-date');
         item.status = val('m-status');
         item.tags = val('m-tags');
         break;
+      }
       case 'testimonial':
         item.client = val('m-client');
         item.location = val('m-location');
@@ -1032,21 +1014,21 @@ const AdminApp = {
         item.rating = parseInt(val('m-rating')) || 5;
         item.text = val('m-text');
         item.status = val('m-status');
-        item.order = parseInt(val('m-order')) || item.order || items.length;
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         break;
       case 'team':
         item.name = val('m-name');
         item.role = val('m-role');
         item.bio = val('m-bio');
         item.status = val('m-status');
-        item.order = parseInt(val('m-order')) || item.order || items.length;
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         break;
       case 'faq':
         item.question = val('m-question');
         item.answer = val('m-answer');
         item.category = val('m-category');
         item.status = val('m-status');
-        item.order = parseInt(val('m-order')) || item.order || items.length;
+        item.display_order = parseInt(val('m-order')) || item.display_order || items.length;
         break;
     }
 

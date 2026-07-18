@@ -1,9 +1,7 @@
 import express, { type Request, type Response } from "express";
 import http from "http";
-import path from "path";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import fileUpload from "express-fileupload";
 import dotenv from "dotenv";
 import { initDb } from "./db.js";
 import publicRoutes from "./routes/publicRoutes.js";
@@ -39,7 +37,6 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(fileUpload({ createParentPath: true }));
 
 app.use("/api", publicRoutes);
 app.use("/api/admin", adminRoutes);
